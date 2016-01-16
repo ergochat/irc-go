@@ -123,6 +123,33 @@ func MakeTagValue(value string) TagValue {
 	return tag
 }
 
+// MakeTags simplifies tag creation for new messages.
+//
+// For example: MakeTags("intent", "PRIVMSG", "account", "bunny", "noval", nil)
+func MakeTags(values ...interface{}) *map[string]TagValue {
+	var tags map[string]TagValue
+
+	tags = make(map[string]TagValue)
+
+	for len(values) > 1 {
+		tag := values[0].(string)
+		value := values[1]
+		var val TagValue
+
+		if value == nil {
+			val = NoTagValue()
+		} else {
+			val = MakeTagValue(value.(string))
+		}
+
+		tags[tag] = val
+
+		values = values[2:]
+	}
+
+	return &tags
+}
+
 // Line returns a sendable line created from an IrcMessage.
 func (ircmsg *IrcMessage) Line() (string, error) {
 	var line string

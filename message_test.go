@@ -14,6 +14,8 @@ type testdecode struct {
 var tests = []testdecode{
 	{":dan-!d@localhost PRIVMSG dan #test :What a cool message",
 		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
+	{"@time=12732;re TEST *",
+		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*")},
 }
 
 func TestDecode(t *testing.T) {
