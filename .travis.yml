@@ -5,5 +5,7 @@ before_install:
     - go get github.com/axw/gocov/gocov
     - go get github.com/mattn/goveralls
     - if ! go get github.com/golang/tools/cmd/cover; then go get golang.org/x/tools/cmd/cover; fi
+    - go get github.com/pierrre/gotestcover
 script:
-    - $HOME/gopath/bin/goveralls -service=travis-ci
+    - gotestcover -coverprofile=cover.out ./...
+    - $HOME/gopath/bin/goveralls -service=travis-ci -coverprofile cover.out
