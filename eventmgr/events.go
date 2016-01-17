@@ -20,6 +20,10 @@ type Handlers struct {
 }
 
 // Attach attaches a handler to our internal list and returns a new Handlers.
+//
+// This isn't optimised as much as we probably could. I think most event
+// handlers will attach everything at startup, so it's not a massive issue,
+// though it is something to look at.
 func (handlers Handlers) Attach(eventhandler EventHandler) Handlers {
 	if handlers.Handlers == nil {
 		handlers.Handlers = make([]EventHandler, 0)
