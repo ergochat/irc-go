@@ -5,7 +5,8 @@ package eventmgr
 
 import "sort"
 
-type handlerfn func(map[string]interface{})
+type infomap map[string]interface{}
+type handlerfn func(string, infomap)
 
 // EventHandler holds the priority and handler function of an event.
 type EventHandler struct {
@@ -18,16 +19,21 @@ type Handlers struct {
 	Handlers []EventHandler
 }
 
-// Attach attaches a handler to our internal list.
-func (handlers Handlers) Attach(eventhandler EventHandler) {
+// Attach attaches a handler to our internal list and returns a new Handlers.
+func (handlers Handlers) Attach(eventhandler EventHandler) Handlers {
+	if handlers.Handlers == nil {
+		handlers.Handlers = make([]EventHandler, 0)
+	}
 	handlers.Handlers = append(handlers.Handlers, eventhandler)
 	sort.Sort(handlers)
+
+	return handlers
 }
 
 // Dispatch dispatches an event to all of our handlers.
-func (handlers Handlers) Dispatch(info map[string]interface{}) {
+func (handlers Handlers) Dispatch(event string, info map[string]interface{}) {
 	for _, eventhandler := range handlers.Handlers {
-		eventhandler.Handler(info)
+		eventhandler.Handler(event, info)
 	}
 }
 
@@ -57,17 +63,23 @@ func (manager *EventManager) Attach(event string, handler handlerfn, priority in
 	fullhandler.Handler = handler
 	fullhandler.Priority = priority
 
+	if manager.Events == nil {
+		manager.Events = make(map[string]Handlers)
+	}
+
 	_, exists := manager.Events[event]
 	if !exists {
 		var handlers Handlers
-		handlers.Handlers = make([]EventHandler, 2)
 		manager.Events[event] = handlers
 	}
 
-	manager.Events[event].Attach(fullhandler)
+	manager.Events[event] = manager.Events[event].Attach(fullhandler)
 }
 
 // Dispatch dispatches the given event/info to all the matching event handlers.
 func (manager *EventManager) Dispatch(event string, info map[string]interface{}) {
-	manager.Events[event].Dispatch(info)
+	events, exists := manager.Events[event]
+	if exists {
+		events.Dispatch(event, info)
+	}
 }
