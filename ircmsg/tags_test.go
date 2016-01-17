@@ -14,6 +14,7 @@ var tests = []testcase{
 
 var unescapeTests = []testcase{
 	{"te\\n\\kst", "te\nkst"},
+	{"te\\\\nst", "te\\nst"},
 }
 
 func TestEscape(t *testing.T) {
