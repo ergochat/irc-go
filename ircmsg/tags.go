@@ -3,42 +3,28 @@
 
 package ircmsg
 
-// ValToEscape contains the IRCv3 Tag Escapes and how characters map to them.
-var ValToEscape = map[byte]byte{
-	';':  ':',
-	' ':  's',
-	'\\': '\\',
-	'\r': 'r',
-	'\n': 'n',
-}
+import "strings"
 
-// EscapeToVal contains the IRCv3 Tag Escapes and how they map to characters.
-var EscapeToVal = map[byte]byte{
-	':':  ';',
-	's':  ' ',
-	'\\': '\\',
-	'r':  '\r',
-	'n':  '\n',
-}
+var (
+	// valtoescape replaces real characters with message tag escapes.
+	valtoescape = strings.NewReplacer("\\", "\\\\", ";", "\\:", " ", "\\s", "\r", "\\r", "\n", "\\n")
+
+	// escapetoval contains the IRCv3 Tag Escapes and how they map to characters.
+	escapetoval = map[byte]byte{
+		':':  ';',
+		's':  ' ',
+		'\\': '\\',
+		'r':  '\r',
+		'n':  '\n',
+	}
+)
 
 // EscapeTagValue takes a value, and returns an escaped message tag value.
 //
 // This function is automatically used when lines are created from an
 // IrcMessage, so you don't need to call it yourself before creating a line.
 func EscapeTagValue(in string) string {
-	out := ""
-
-	for len(in) > 0 {
-		val, exists := ValToEscape[in[0]]
-		if exists == true {
-			out += "\\" + string(val)
-		} else {
-			out += string(in[0])
-		}
-		in = in[1:]
-	}
-
-	return out
+	return valtoescape.Replace(in)
 }
 
 // UnescapeTagValue takes an escaped message tag value, and returns the raw value.
@@ -50,7 +36,7 @@ func UnescapeTagValue(in string) string {
 
 	for len(in) > 0 {
 		if in[0] == '\\' && len(in) > 1 {
-			val, exists := EscapeToVal[in[1]]
+			val, exists := escapetoval[in[1]]
 			if exists == true {
 				out += string(val)
 			} else {
