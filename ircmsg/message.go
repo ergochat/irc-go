@@ -37,8 +37,7 @@ func ParseLine(line string) (IrcMessage, error) {
 				val.HasValue = true
 				splittag := strings.SplitN(fulltag, "=", 2)
 				name = splittag[0]
-				val.Value = splittag[1]
-				// TODO: unescape values
+				val.Value = UnescapeTagValue(splittag[1])
 			} else {
 				name = fulltag
 				val.HasValue = false
@@ -116,8 +115,7 @@ func (ircmsg *IrcMessage) Line() (string, error) {
 
 			if val.HasValue {
 				line += "="
-				line += val.Value
-				// TODO: escape values
+				line += EscapeTagValue(val.Value)
 			}
 
 			line += ";"

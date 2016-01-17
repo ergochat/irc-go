@@ -3,6 +3,63 @@
 
 package ircmsg
 
+// ValToEscape contains the IRCv3 Tag Escapes and how characters map to them.
+var ValToEscape = map[byte]byte{
+	';':  ':',
+	' ':  's',
+	'\\': '\\',
+	'\r': 'r',
+	'\n': 'n',
+}
+
+// EscapeToVal contains the IRCv3 Tag Escapes and how they map to characters.
+var EscapeToVal = map[byte]byte{
+	':':  ';',
+	's':  ' ',
+	'\\': '\\',
+	'r':  '\r',
+	'n':  '\n',
+}
+
+// EscapeTagValue takes a value, and returns an escaped message tag value.
+func EscapeTagValue(in string) string {
+	out := ""
+
+	for len(in) > 0 {
+		val, exists := ValToEscape[in[0]]
+		if exists == true {
+			out += "\\" + string(val)
+		} else {
+			out += string(in[0])
+		}
+		in = in[1:]
+	}
+
+	return out
+}
+
+// UnescapeTagValue takes an escaped message tag value, and returns the raw value.
+func UnescapeTagValue(in string) string {
+	out := ""
+
+	for len(in) > 0 {
+		if in[0] == '\\' && len(in) > 1 {
+			val, exists := EscapeToVal[in[1]]
+			if exists == true {
+				out += "\\" + string(val)
+			} else {
+				out += string(in[1])
+			}
+			in = in[2:]
+		} else {
+			out += string(in[0])
+			in = in[1:]
+		}
+	}
+
+	return out
+}
+
 // TagValue represents the value of a tag. This is because tags may have
 // no value at all or just an empty value, and this can represent both
 // using the HasValue attribute.
@@ -31,7 +88,6 @@ func MakeTagValue(value string) TagValue {
 // For example: MakeTags("intent", "PRIVMSG", "account", "bunny", "noval", nil)
 func MakeTags(values ...interface{}) *map[string]TagValue {
 	var tags map[string]TagValue
-
 	tags = make(map[string]TagValue)
 
 	for len(values) > 1 {
