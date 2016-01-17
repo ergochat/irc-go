@@ -22,6 +22,9 @@ var EscapeToVal = map[byte]byte{
 }
 
 // EscapeTagValue takes a value, and returns an escaped message tag value.
+//
+// This function is automatically used when lines are created from an
+// IrcMessage, so you don't need to call it yourself before creating a line.
 func EscapeTagValue(in string) string {
 	out := ""
 
@@ -39,6 +42,9 @@ func EscapeTagValue(in string) string {
 }
 
 // UnescapeTagValue takes an escaped message tag value, and returns the raw value.
+//
+// This function is automatically used when lines are interpreted by ParseLine,
+// so you don't need to call it yourself after parsing a line.
 func UnescapeTagValue(in string) string {
 	out := ""
 
