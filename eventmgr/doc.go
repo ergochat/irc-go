@@ -4,7 +4,6 @@
 /*
 Package eventmgr handles dispatching and handling events.
 
-This package is in planning stages and is not yet tested or appropriate for
-actual use.
+This package is in an early alpha stage.
 */
 package eventmgr
