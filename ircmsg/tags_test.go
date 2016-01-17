@@ -8,7 +8,7 @@ type testcase struct {
 }
 
 var tests = []testcase{
-	{"te\\rst", "te\rst"},
+	{"te\\nst", "te\nst"},
 }
 
 func TestEscape(t *testing.T) {

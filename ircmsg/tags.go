@@ -52,7 +52,7 @@ func UnescapeTagValue(in string) string {
 		if in[0] == '\\' && len(in) > 1 {
 			val, exists := EscapeToVal[in[1]]
 			if exists == true {
-				out += "\\" + string(val)
+				out += string(val)
 			} else {
 				out += string(in[1])
 			}
