@@ -9,6 +9,11 @@ type testcase struct {
 
 var tests = []testcase{
 	{"te\\nst", "te\nst"},
+	{"tes\\\\st", "tes\\st"},
+}
+
+var unescapeTests = []testcase{
+	{"te\\n\\kst", "te\nkst"},
 }
 
 func TestEscape(t *testing.T) {
@@ -27,6 +32,17 @@ func TestEscape(t *testing.T) {
 
 func TestUnescape(t *testing.T) {
 	for _, pair := range tests {
+		val := UnescapeTagValue(pair.escaped)
+
+		if val != pair.unescaped {
+			t.Error(
+				"For", pair.escaped,
+				"expected", pair.unescaped,
+				"got", val,
+			)
+		}
+	}
+	for _, pair := range unescapeTests {
 		val := UnescapeTagValue(pair.escaped)
 
 		if val != pair.unescaped {
