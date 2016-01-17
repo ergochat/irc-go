@@ -19,6 +19,13 @@ type IrcMessage struct {
 }
 
 // ParseLine creates and returns an IrcMessage from the given IRC line.
+//
+// Quirks:
+//
+//   The RFCs say that last parameters with no characters MUST be a trailing.
+//   IE, they need to be prefixed with ":". We disagree with that and handle
+//   incoming last empty parameters whether they are trailing or ordinary
+//   parameters. However, we do follow that rule when emitting lines.
 func ParseLine(line string) (IrcMessage, error) {
 	line = strings.Trim(line, "\r\n")
 	var ircmsg IrcMessage
