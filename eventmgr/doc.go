@@ -1,5 +1,5 @@
 // written by Daniel Oaks <daniel@danieloaks.net>
-// released under the CC0 Public Domain license
+// released under the ISC license
 
 /*
 Package eventmgr handles dispatching and handling events.
