@@ -8,4 +8,5 @@ An example bot that uses this package can be found [here](https://gist.github.co
 
 Packages:
 
+* [**eventmgr**](https://godoc.org/github.com/DanielOaks/girc-go/eventmgr): Event attaching and dispatching.
 * [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
