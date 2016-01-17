@@ -1,7 +1,7 @@
 // written by Daniel Oaks <daniel@danieloaks.net>
 // released under the CC0 Public Domain license
 
-package girc
+package ircmsg
 
 import (
 	"errors"

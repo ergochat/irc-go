@@ -1,4 +1,4 @@
-package girc
+package ircmsg
 
 import (
 	"reflect"
