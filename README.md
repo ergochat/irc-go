@@ -1,5 +1,9 @@
 # gIRC-go
 
-I write an IRC library in Python called [gIRC](https://github.com/DanielOaks/girc). This is something similar, but for Go!
+This is an IRC library for Go, pretty similar to the [original Python version](https://github.com/DanielOaks/girc).
 
-I don't recommend using this in production in any way at all yet.
+This package is still in its early stages.
+
+Packages:
+
+* [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
