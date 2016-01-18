@@ -5,12 +5,15 @@ package eventmgr
 
 import "sort"
 
-type infomap map[string]interface{}
-type handlerfn func(string, infomap)
+// HandlerFn defines a function we can call as a handler.
+type HandlerFn func(string, InfoMap)
+
+// InfoMap defines a map we pass through event dispatches.
+type InfoMap map[string]interface{}
 
 // EventHandler holds the priority and handler function of an event.
 type EventHandler struct {
-	Handler  handlerfn
+	Handler  HandlerFn
 	Priority int
 }
 
@@ -62,7 +65,7 @@ type EventManager struct {
 }
 
 // Attach lets you attach a handler to the given event.
-func (manager *EventManager) Attach(event string, handler handlerfn, priority int) {
+func (manager *EventManager) Attach(event string, handler HandlerFn, priority int) {
 	var fullhandler EventHandler
 	fullhandler.Handler = handler
 	fullhandler.Priority = priority

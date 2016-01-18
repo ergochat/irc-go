@@ -4,7 +4,7 @@ import "testing"
 
 var test2Tracker = 0
 
-func handler1(event string, info infomap) {
+func handler1(event string, info InfoMap) {
 	t := info["test"].(*testing.T)
 
 	if info["k"].(int) != 3 {
@@ -16,7 +16,7 @@ func handler1(event string, info infomap) {
 	}
 }
 
-func handler2First(event string, info infomap) {
+func handler2First(event string, info InfoMap) {
 	t := info["test"].(*testing.T)
 
 	if test2Tracker != 0 {
@@ -30,7 +30,7 @@ func handler2First(event string, info infomap) {
 	}
 }
 
-func handler2Second(event string, info infomap) {
+func handler2Second(event string, info InfoMap) {
 	t := info["test"].(*testing.T)
 
 	if test2Tracker != 3 {
@@ -44,7 +44,7 @@ func handler2Second(event string, info infomap) {
 	}
 }
 
-func handler2Third(event string, info infomap) {
+func handler2Third(event string, info InfoMap) {
 	t := info["test"].(*testing.T)
 
 	if test2Tracker != 2 {
@@ -60,11 +60,11 @@ func handler2Third(event string, info infomap) {
 
 func TestAttachDispatch(t *testing.T) {
 	var manager EventManager
-	var info infomap
+	var info InfoMap
 
 	// test dispatching
 	manager.Attach("test1", handler1, 0)
-	info = make(infomap)
+	info = make(InfoMap)
 	info["k"] = 3
 	info["test"] = t
 	manager.Dispatch("test1", info)
@@ -73,7 +73,7 @@ func TestAttachDispatch(t *testing.T) {
 	manager.Attach("test2", handler2Second, 8)
 	manager.Attach("test2", handler2First, 3)
 	manager.Attach("test2", handler2Third, 16)
-	info = make(infomap)
+	info = make(InfoMap)
 	info["test"] = t
 	manager.Dispatch("test2", info)
 
