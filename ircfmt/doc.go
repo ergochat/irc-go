@@ -76,6 +76,6 @@ Here are the colour names and codes we recognise:
 	  15  | light grey
 	--------------------
 
-This package is in alpha.
+This package is in beta and the API should not change.
 */
 package ircfmt
