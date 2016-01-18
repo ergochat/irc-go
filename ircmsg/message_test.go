@@ -64,4 +64,26 @@ func TestEncode(t *testing.T) {
 			)
 		}
 	}
+
+	// make sure we fail on no command
+	msg := MakeMessage(nil, "example.com", "", "*")
+	_, err := msg.Line()
+	if err == nil {
+		t.Error(
+			"For", "Test Failure 1",
+			"expected", "an error",
+			"got", err,
+		)
+	}
+
+	// make sure we fail with params in right way
+	msg = MakeMessage(nil, "example.com", "TEST", "*", "t s", "", "Param after empty!")
+	_, err = msg.Line()
+	if err == nil {
+		t.Error(
+			"For", "Test Failure 2",
+			"expected", "an error",
+			"got", err,
+		)
+	}
 }
