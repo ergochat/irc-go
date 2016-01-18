@@ -3,14 +3,14 @@
 
 /*
 Package girc has useful, self-contained packages that help with IRC
-development. The packages are split up so you can use something like the
-formatting package, while totally ignoring the provided event management
-package.
+development. These packages are split up so you can easily choose which ones to
+use while ignoring the others, handling things like simplifying formatting
+codes, parsing and creating raw IRC lines, and event management.
 
 An example bot that uses these packages can be found here:
 https://gist.github.com/DanielOaks/cbbc957e8dba39f59d9e
 
 These packages are in their early stages. For the status of each package, see
-the documentation for each packages.
+the documentation for that package.
 */
 package girc
