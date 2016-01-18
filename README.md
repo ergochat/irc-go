@@ -18,4 +18,5 @@ Packages:
 
 * [**eventmgr**](https://godoc.org/github.com/DanielOaks/girc-go/eventmgr): Event attaching and dispatching.
 * [**ircfmt**](https://godoc.org/github.com/DanielOaks/girc-go/ircfmt): IRC format codes handling, escaping and unescaping.
+* [**ircmap**](https://godoc.org/github.com/DanielOaks/girc-go/ircmap): IRC string casefolding.
 * [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
