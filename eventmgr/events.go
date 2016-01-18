@@ -11,6 +11,13 @@ type HandlerFn func(string, InfoMap)
 // InfoMap defines a map we pass through event dispatches.
 type InfoMap map[string]interface{}
 
+// NewInfoMap returns a new, empty InfoMap.
+func NewInfoMap() InfoMap {
+	var info InfoMap
+	info = make(InfoMap)
+	return info
+}
+
 // EventHandler holds the priority and handler function of an event.
 type EventHandler struct {
 	Handler  HandlerFn

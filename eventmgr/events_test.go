@@ -60,11 +60,10 @@ func handler2Third(event string, info InfoMap) {
 
 func TestAttachDispatch(t *testing.T) {
 	var manager EventManager
-	var info InfoMap
 
 	// test dispatching
 	manager.Attach("test1", handler1, 0)
-	info = make(InfoMap)
+	info := NewInfoMap()
 	info["k"] = 3
 	info["test"] = t
 	manager.Dispatch("test1", info)
