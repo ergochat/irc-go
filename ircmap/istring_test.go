@@ -19,10 +19,22 @@ var equalRFC1459Tests = []testcase{
 	{"#rK03j\\mn0r-4GD", "#rk03j|mn0r-4gd"},
 }
 
+var equalRFC3454Tests = []testcase{
+	{"#TeStChAn", "#testchan"},
+	{"#beßtchannEL", "#besstchannel"},
+}
+
 func TestASCII(t *testing.T) {
 	for _, pair := range equalASCIITests {
-		val := Casefold(ASCII, pair.raw)
+		val, err := Casefold(ASCII, pair.raw)
 
+		if err != nil {
+			t.Error(
+				"For", pair.raw,
+				"expected", pair.folded,
+				"but we got an error:", err.Error(),
+			)
+		}
 		if val != pair.folded {
 			t.Error(
 				"For", pair.raw,
@@ -35,8 +47,36 @@ func TestASCII(t *testing.T) {
 
 func TestRFC1459(t *testing.T) {
 	for _, pair := range equalRFC1459Tests {
-		val := Casefold(RFC1459, pair.raw)
+		val, err := Casefold(RFC1459, pair.raw)
 
+		if err != nil {
+			t.Error(
+				"For", pair.raw,
+				"expected", pair.folded,
+				"but we got an error:", err.Error(),
+			)
+		}
+		if val != pair.folded {
+			t.Error(
+				"For", pair.raw,
+				"expected", pair.folded,
+				"got", val,
+			)
+		}
+	}
+}
+
+func TestRFC3454(t *testing.T) {
+	for _, pair := range equalRFC3454Tests {
+		val, err := Casefold(RFC3454, pair.raw)
+
+		if err != nil {
+			t.Error(
+				"For", pair.raw,
+				"expected", pair.folded,
+				"but we got an error:", err.Error(),
+			)
+		}
 		if val != pair.folded {
 			t.Error(
 				"For", pair.raw,

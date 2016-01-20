@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	// Mappings is a mapping of ISUPPORT CASEMAP value to our MappingTypes.
+	// Mappings is a mapping of ISUPPORT CASEMAP strings to our MappingTypes.
 	Mappings = map[string]MappingType{
 		"ascii":   ASCII,
 		"rfc1459": RFC1459,
