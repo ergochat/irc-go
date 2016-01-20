@@ -2,7 +2,7 @@
 // released under the ISC license
 
 /*
-Package ircmap handles IRC casefolding, ie ascii/rfc1459 casefolding..
+Package ircmap handles IRC casefolding, ie ascii/rfc1459 casefolding.
 
 This package is in alpha.
 */
