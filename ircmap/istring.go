@@ -19,8 +19,8 @@ const (
 	// RFC1459 represents the casemapping defined by "rfc1459"
 	RFC1459
 
-	// RFC3454 represents the UTF-8 nameprep casefolding as used by mammon.io
-	// and ircv3-harmony.
+	// RFC3454 represents the UTF-8 nameprep casefolding as used by mammon-ircd
+	// and specified by ircv3-harmony.
 	RFC3454
 )
 
