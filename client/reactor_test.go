@@ -43,6 +43,18 @@ func TestServerConnection(t *testing.T) {
 		)
 	}
 
+	// shutdown client
+	reactor.Shutdown(" Get mad!  ")
+
+	message, _ = reader.ReadString('\n')
+	if message != "QUIT : Get mad!  \r\n" {
+		t.Error(
+			"Did not receive QUIT message, received: [",
+			message,
+			"]",
+		)
+	}
+
 	// close connection and listener
 	conn.Close()
 	listener.Close()

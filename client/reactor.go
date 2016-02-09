@@ -16,7 +16,7 @@ type eventRegistration struct {
 // Reactor is the start-point for gircclient. It creates and manages
 // ServerConnections.
 type Reactor struct {
-	ServerConnections map[string]ServerConnection
+	ServerConnections map[string]*ServerConnection
 	eventsToRegister  []eventRegistration
 }
 
@@ -24,23 +24,23 @@ type Reactor struct {
 func NewReactor() Reactor {
 	var newReactor Reactor
 
-	newReactor.ServerConnections = make(map[string]ServerConnection, 0)
+	newReactor.ServerConnections = make(map[string]*ServerConnection, 0)
 	newReactor.eventsToRegister = make([]eventRegistration, 0)
 
 	return newReactor
 }
 
 // CreateServer creates a ServerConnection and returns it.
-func (r *Reactor) CreateServer(name string) ServerConnection {
+func (r *Reactor) CreateServer(name string) *ServerConnection {
 	var sc ServerConnection
 
-	r.ServerConnections[name] = sc
+	r.ServerConnections[name] = &sc
 
 	for _, e := range r.eventsToRegister {
 		sc.RegisterEvent(e.Direction, e.Name, e.Handler, e.Priority)
 	}
 
-	return sc
+	return &sc
 }
 
 // Shutdown shuts down all ServerConnections.

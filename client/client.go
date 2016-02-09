@@ -25,6 +25,10 @@ type ServerConnection struct {
 	eventsIn   eventmgr.EventManager
 	eventsOut  eventmgr.EventManager
 
+	// data we keep track of
+	//features ServerFeatures
+	//caps     ClientCapabilities
+
 	// details users must supply before connection
 	Nick            string
 	InitialUser     string
@@ -51,6 +55,8 @@ func (sc *ServerConnection) Connect(address string, ssl bool) {
 
 	sc.Send(nil, "", "NICK", sc.Nick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
+
+	sc.Connected = true
 
 	go sc.receiveLoop()
 }
@@ -104,9 +110,11 @@ func (sc *ServerConnection) RegisterEvent(direction string, name string, handler
 	}
 }
 
-// Shutdown exits from the server.
+// Shutdown closes the connection to the server.
 func (sc *ServerConnection) Shutdown(message string) {
-	sc.Send(nil, sc.Nick, "QUIT", message)
+	sc.Send(nil, "", "QUIT", message)
+	sc.Connected = false
+	sc.connection.Close()
 }
 
 // Send sends an IRC message to the server.
