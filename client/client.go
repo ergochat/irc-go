@@ -36,12 +36,12 @@ type ServerConnection struct {
 }
 
 // Connect connects to the given address.
-func (sc *ServerConnection) Connect(address string, ssl bool) {
+func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Config) {
 	var conn net.Conn
 	var err error
 
 	if ssl {
-		conn, err = tls.Dial("tcp", address, nil)
+		conn, err = tls.Dial("tcp", address, tlsconfig)
 	} else {
 		conn, err = net.Dial("tcp", address)
 	}
@@ -52,11 +52,10 @@ func (sc *ServerConnection) Connect(address string, ssl bool) {
 	}
 
 	sc.connection = conn
+	sc.Connected = true
 
 	sc.Send(nil, "", "NICK", sc.Nick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
-
-	sc.Connected = true
 
 	go sc.receiveLoop()
 }
@@ -69,7 +68,6 @@ func (sc *ServerConnection) receiveLoop() {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			sc.Connected = false
-			fmt.Println("Reading error:", err)
 			break
 		}
 		line = strings.Trim(line, "\r\n")
