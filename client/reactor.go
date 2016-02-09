@@ -24,6 +24,7 @@ type Reactor struct {
 func NewReactor() Reactor {
 	var newReactor Reactor
 
+	newReactor.ServerConnections = make(map[string]ServerConnection, 0)
 	newReactor.eventsToRegister = make([]eventRegistration, 0)
 
 	return newReactor
