@@ -9,8 +9,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -107,6 +109,7 @@ func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnec
 			message,
 			"]",
 		)
+		return
 	}
 
 	message, _ = reader.ReadString('\n')
@@ -116,6 +119,24 @@ func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnec
 			message,
 			"]",
 		)
+		return
+	}
+
+	// make sure nick changes properly
+	// need to wait for a quick moment here for TLS to do this properly
+	fmt.Fprintf(conn, ":example.com 001 dan :Welcome to the gIRC-Go Test Network!\r\n")
+	runtime.Gosched()
+	waitTime, _ := time.ParseDuration("10ms")
+	time.Sleep(waitTime)
+
+	if newServer.Nick != "dan" {
+		t.Error(
+			"Nick was not set with 001, expected",
+			"dan",
+			"got",
+			newServer.Nick,
+		)
+		return
 	}
 
 	// shutdown client
@@ -128,6 +149,7 @@ func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnec
 			message,
 			"]",
 		)
+		return
 	}
 
 	// close connection and listener

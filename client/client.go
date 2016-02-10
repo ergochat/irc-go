@@ -64,7 +64,7 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 func (sc *ServerConnection) receiveLoop() {
 	reader := bufio.NewReader(sc.connection)
 
-	for sc.Connected {
+	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			sc.Connected = false
@@ -72,8 +72,14 @@ func (sc *ServerConnection) receiveLoop() {
 		}
 		line = strings.Trim(line, "\r\n")
 
+		// ignore empty lines
+		if len(line) < 1 {
+			continue
+		}
+
 		// dispatch raw
 		rawInfo := eventmgr.NewInfoMap()
+		rawInfo["server"] = sc
 		rawInfo["direction"] = "in"
 		rawInfo["data"] = line
 
@@ -82,6 +88,7 @@ func (sc *ServerConnection) receiveLoop() {
 		// dispatch events
 		message, err := ircmsg.ParseLine(line)
 		info := eventmgr.NewInfoMap()
+		info["server"] = sc
 		info["tags"] = message.Tags
 		info["prefix"] = message.Prefix
 		info["command"] = message.Command

@@ -20,12 +20,23 @@ type Reactor struct {
 	eventsToRegister  []eventRegistration
 }
 
+// welcomeHandler sets the nick to the first parameter of the 001 message.
+// This ensures that when we connect to IRCds that silently truncate the
+// nickname, we keep the correct one.
+func welcomeHandler(event string, info eventmgr.InfoMap) {
+	server := info["server"].(*ServerConnection)
+	server.Nick = info["params"].([]string)[0]
+}
+
 // NewReactor returns a new, empty Reactor.
 func NewReactor() Reactor {
 	var newReactor Reactor
 
 	newReactor.ServerConnections = make(map[string]*ServerConnection, 0)
 	newReactor.eventsToRegister = make([]eventRegistration, 0)
+
+	// add the default handlers
+	newReactor.RegisterEvent("in", "001", welcomeHandler, -10)
 
 	return newReactor
 }
