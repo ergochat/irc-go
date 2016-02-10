@@ -103,7 +103,8 @@ func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string,
 	}
 	fmt.Fprintf(conn, line)
 
-	// need to wait for a quick moment here for TLS to do this properly
+	// need to wait for a quick moment here for TLS to process any changes this
+	// message has caused
 	runtime.Gosched()
 	waitTime, _ := time.ParseDuration("10ms")
 	time.Sleep(waitTime)
