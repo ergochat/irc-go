@@ -124,6 +124,7 @@ func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnec
 
 	// make sure nick changes properly
 	// need to wait for a quick moment here for TLS to do this properly
+	fmt.Fprintf(conn, "\r\n\r\n\r\n") // these should be silently ignored
 	fmt.Fprintf(conn, ":example.com 001 dan :Welcome to the gIRC-Go Test Network!\r\n")
 	runtime.Gosched()
 	waitTime, _ := time.ParseDuration("10ms")
