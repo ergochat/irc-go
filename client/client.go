@@ -37,7 +37,7 @@ type ServerConnection struct {
 }
 
 // Connect connects to the given address.
-func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Config) {
+func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Config) error {
 	var conn net.Conn
 	var err error
 
@@ -48,8 +48,7 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	}
 
 	if err != nil {
-		fmt.Println("Connection error:", err)
-		os.Exit(1)
+		return err
 	}
 
 	sc.connection = conn
@@ -60,6 +59,8 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
 
 	go sc.receiveLoop()
+
+	return nil
 }
 
 // receiveLoop runs a loop of receiving and dispatching new messages.
