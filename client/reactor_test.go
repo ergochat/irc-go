@@ -149,6 +149,16 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 
 	sendMessage(conn, nil, "example.com", "CAP", "*", "ACK", "chghost multi-prefix userhost-in-names sasl")
 
+	message, _ = reader.ReadString('\n')
+	if message != "CAP END\r\n" {
+		t.Error(
+			"Did not receive CAP END message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
 	// NICK/USER
 	message, _ = reader.ReadString('\n')
 	if message != "NICK coolguy\r\n" {

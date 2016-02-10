@@ -33,6 +33,10 @@ func capHandler(event string, info eventmgr.InfoMap) {
 			if len(capsToRequest) > 0 {
 				sc.Send(nil, "", "CAP", "REQ", capsToRequest)
 			}
+
+			if !sc.Registered {
+				sc.Send(nil, "", "CAP", "END")
+			}
 		}
 	}
 }
