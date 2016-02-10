@@ -31,6 +31,7 @@ type ServerConnection struct {
 
 	// details users must supply before connection
 	Nick            string
+	InitialNick     string
 	InitialUser     string
 	InitialRealName string
 }
@@ -54,7 +55,8 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	sc.connection = conn
 	sc.Connected = true
 
-	sc.Send(nil, "", "NICK", sc.Nick)
+	sc.Nick = sc.InitialNick
+	sc.Send(nil, "", "NICK", sc.InitialNick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
 
 	go sc.receiveLoop()

@@ -19,27 +19,27 @@ import (
 
 func TestPlainConnection(t *testing.T) {
 	reactor := NewReactor()
-	newServer := reactor.CreateServer("local")
+	client := reactor.CreateServer("local")
 
-	newServer.Nick = "coolguy"
-	newServer.InitialUser = "c"
-	newServer.InitialRealName = "girc-go Test Client  "
+	client.InitialNick = "coolguy"
+	client.InitialUser = "c"
+	client.InitialRealName = "girc-go Test Client  "
 
 	// we mock up a server connection to test the client
 	listener, _ := net.Listen("tcp", ":0")
 
-	newServer.Connect(listener.Addr().String(), false, nil)
+	client.Connect(listener.Addr().String(), false, nil)
 
-	testServerConnection(t, reactor, newServer, listener)
+	testServerConnection(t, reactor, client, listener)
 }
 
 func TestTLSConnection(t *testing.T) {
 	reactor := NewReactor()
-	newServer := reactor.CreateServer("local")
+	client := reactor.CreateServer("local")
 
-	newServer.Nick = "coolguy"
-	newServer.InitialUser = "c"
-	newServer.InitialRealName = "girc-go Test Client  "
+	client.InitialNick = "coolguy"
+	client.InitialUser = "c"
+	client.InitialRealName = "girc-go Test Client  "
 
 	// generate a test certificate to use
 	priv, _ := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
@@ -90,12 +90,12 @@ func TestTLSConnection(t *testing.T) {
 	var clientTLSConfig tls.Config
 	clientTLSConfig.RootCAs = clientTLSCertPool
 	clientTLSConfig.ServerName = "localhost"
-	go newServer.Connect(listener.Addr().String(), true, &clientTLSConfig)
+	go client.Connect(listener.Addr().String(), true, &clientTLSConfig)
 
-	testServerConnection(t, reactor, newServer, listener)
+	testServerConnection(t, reactor, client, listener)
 }
 
-func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnection, listener net.Listener) {
+func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnection, listener net.Listener) {
 	conn, _ := listener.Accept()
 	reader := bufio.NewReader(conn)
 
@@ -130,12 +130,12 @@ func testServerConnection(t *testing.T, reactor Reactor, newServer *ServerConnec
 	waitTime, _ := time.ParseDuration("10ms")
 	time.Sleep(waitTime)
 
-	if newServer.Nick != "dan" {
+	if client.Nick != "dan" {
 		t.Error(
 			"Nick was not set with 001, expected",
 			"dan",
 			"got",
-			newServer.Nick,
+			client.Nick,
 		)
 		return
 	}
