@@ -17,8 +17,9 @@ import (
 
 // ServerConnection is a connection to a single server.
 type ServerConnection struct {
-	Name      string
-	Connected bool
+	Name       string
+	Connected  bool
+	Registered bool
 
 	// internal stuff
 	connection net.Conn
@@ -26,14 +27,27 @@ type ServerConnection struct {
 	eventsOut  eventmgr.EventManager
 
 	// data we keep track of
-	//features ServerFeatures
-	//caps     ClientCapabilities
+	// Features ServerFeatures
+	Caps ClientCapabilities
 
 	// details users must supply before connection
 	Nick            string
 	InitialNick     string
 	InitialUser     string
 	InitialRealName string
+}
+
+// newServerConnection returns an initialised ServerConnection, for internal
+// use.
+func newServerConnection() *ServerConnection {
+	var sc ServerConnection
+
+	sc.Caps = NewClientCapabilities()
+
+	sc.Caps.AddWantedCaps("account-notify", "away-notify", "extended-join", "multi-prefix", "sasl")
+	sc.Caps.AddWantedCaps("account-tag", "chghost", "echo-message", "invite-notify", "server-time", "userhost-in-names")
+
+	return &sc
 }
 
 // Connect connects to the given address.
@@ -54,9 +68,7 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	sc.connection = conn
 	sc.Connected = true
 
-	sc.Nick = sc.InitialNick
-	sc.Send(nil, "", "NICK", sc.InitialNick)
-	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
+	sc.Send(nil, "", "CAP", "LS", "302")
 
 	go sc.receiveLoop()
 
@@ -97,7 +109,8 @@ func (sc *ServerConnection) receiveLoop() {
 		info["command"] = message.Command
 		info["params"] = message.Params
 
-		sc.dispatchIn(message.Command, info)
+		// IRC commands are case-insensitive
+		sc.dispatchIn(strings.ToUpper(message.Command), info)
 	}
 
 	sc.connection.Close()

@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/DanielOaks/girc-go/ircmsg"
 )
 
 func TestPlainConnection(t *testing.T) {
@@ -95,13 +97,56 @@ func TestTLSConnection(t *testing.T) {
 	testServerConnection(t, reactor, client, listener)
 }
 
+func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) {
+	ircmsg := ircmsg.MakeMessage(tags, prefix, command, params...)
+	line, err := ircmsg.Line()
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(conn, line)
+
+	// need to wait for a quick moment here for TLS to do this properly
+	runtime.Gosched()
+	waitTime, _ := time.ParseDuration("10ms")
+	time.Sleep(waitTime)
+}
+
 func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnection, listener net.Listener) {
 	conn, _ := listener.Accept()
 	reader := bufio.NewReader(conn)
 
-	// test each message in sequence
 	var message string
 
+	// CAP
+	message, _ = reader.ReadString('\n')
+	if message != "CAP LS 302\r\n" {
+		t.Error(
+			"Did not receive CAP LS message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
+	sendMessage(conn, nil, "example.com", "CAP", "*", "LS", "*", "multi-prefix userhost-in-names sasl=PLAIN")
+	sendMessage(conn, nil, "example.com", "CAP", "*", "LS", "chghost")
+
+	message, _ = reader.ReadString('\n')
+	if message != "CAP REQ :chghost multi-prefix sasl userhost-in-names\r\n" {
+		t.Error(
+			"Did not receive CAP REQ message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
+	// these should be silently ignored
+	fmt.Fprintf(conn, "\r\n\r\n\r\n")
+
+	sendMessage(conn, nil, "example.com", "CAP", "*", "ACK", "chghost multi-prefix userhost-in-names sasl")
+
+	// NICK/USER
 	message, _ = reader.ReadString('\n')
 	if message != "NICK coolguy\r\n" {
 		t.Error(
@@ -123,12 +168,7 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 	}
 
 	// make sure nick changes properly
-	// need to wait for a quick moment here for TLS to do this properly
-	fmt.Fprintf(conn, "\r\n\r\n\r\n") // these should be silently ignored
-	fmt.Fprintf(conn, ":example.com 001 dan :Welcome to the gIRC-Go Test Network!\r\n")
-	runtime.Gosched()
-	waitTime, _ := time.ParseDuration("10ms")
-	time.Sleep(waitTime)
+	sendMessage(conn, nil, "example.com", "001", "dan", "Welcome to the gIRC-Go Test Network!")
 
 	if client.Nick != "dan" {
 		t.Error(
