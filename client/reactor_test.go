@@ -23,9 +23,7 @@ func TestPlainConnection(t *testing.T) {
 	reactor := NewReactor()
 	client := reactor.CreateServer("local")
 
-	client.InitialNick = "coolguy"
-	client.InitialUser = "c"
-	client.InitialRealName = "girc-go Test Client  "
+	initialiseServerConnection(client)
 
 	// we mock up a server connection to test the client
 	listener, _ := net.Listen("tcp", ":0")
@@ -40,9 +38,7 @@ func TestTLSConnection(t *testing.T) {
 	reactor := NewReactor()
 	client := reactor.CreateServer("local")
 
-	client.InitialNick = "coolguy"
-	client.InitialUser = "c"
-	client.InitialRealName = "girc-go Test Client  "
+	initialiseServerConnection(client)
 
 	// generate a test certificate to use
 	priv, _ := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
@@ -111,6 +107,12 @@ func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string,
 	runtime.Gosched()
 	waitTime, _ := time.ParseDuration("10ms")
 	time.Sleep(waitTime)
+}
+
+func initialiseServerConnection(client *ServerConnection) {
+	client.InitialNick = "coolguy"
+	client.InitialUser = "c"
+	client.InitialRealName = "girc-go Test Client  "
 }
 
 func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnection, listener net.Listener) {
