@@ -31,6 +31,7 @@ func TestPlainConnection(t *testing.T) {
 	listener, _ := net.Listen("tcp", ":0")
 
 	client.Connect(listener.Addr().String(), false, nil)
+	go client.ReceiveLoop()
 
 	testServerConnection(t, reactor, client, listener)
 }
@@ -93,6 +94,7 @@ func TestTLSConnection(t *testing.T) {
 	clientTLSConfig.RootCAs = clientTLSCertPool
 	clientTLSConfig.ServerName = "localhost"
 	go client.Connect(listener.Addr().String(), true, &clientTLSConfig)
+	go client.ReceiveLoop()
 
 	testServerConnection(t, reactor, client, listener)
 }
@@ -112,6 +114,7 @@ func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string,
 }
 
 func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnection, listener net.Listener) {
+	// start our reader
 	conn, _ := listener.Accept()
 	reader := bufio.NewReader(conn)
 

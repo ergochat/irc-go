@@ -36,7 +36,7 @@ func NewReactor() Reactor {
 
 // CreateServer creates a ServerConnection and returns it.
 func (r *Reactor) CreateServer(name string) *ServerConnection {
-	sc := newServerConnection()
+	sc := newServerConnection(name)
 
 	r.ServerConnections[name] = sc
 

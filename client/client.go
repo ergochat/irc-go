@@ -6,10 +6,12 @@ package gircclient
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/DanielOaks/girc-go/eventmgr"
 	"github.com/DanielOaks/girc-go/ircmsg"
@@ -39,9 +41,10 @@ type ServerConnection struct {
 
 // newServerConnection returns an initialised ServerConnection, for internal
 // use.
-func newServerConnection() *ServerConnection {
+func newServerConnection(name string) *ServerConnection {
 	var sc ServerConnection
 
+	sc.Name = name
 	sc.Caps = NewClientCapabilities()
 
 	sc.Caps.AddWantedCaps("account-notify", "away-notify", "extended-join", "multi-prefix", "sasl")
@@ -52,6 +55,12 @@ func newServerConnection() *ServerConnection {
 
 // Connect connects to the given address.
 func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Config) error {
+	// check the required attributes
+	if sc.InitialNick == "" || sc.InitialUser == "" {
+		return errors.New("InitialNick and InitialUser must be set before connecting")
+	}
+
+	// connect
 	var conn net.Conn
 	var err error
 
@@ -70,13 +79,17 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 
 	sc.Send(nil, "", "CAP", "LS", "302")
 
-	go sc.receiveLoop()
-
 	return nil
 }
 
-// receiveLoop runs a loop of receiving and dispatching new messages.
-func (sc *ServerConnection) receiveLoop() {
+// ReceiveLoop runs a loop of receiving and dispatching new messages.
+func (sc *ServerConnection) ReceiveLoop() {
+	// wait for the connection to become available
+	for sc.connection == nil {
+		waitTime, _ := time.ParseDuration("10ms")
+		time.Sleep(waitTime)
+	}
+
 	reader := bufio.NewReader(sc.connection)
 
 	for {
@@ -150,6 +163,7 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 
 	// dispatch raw event
 	info := eventmgr.NewInfoMap()
+	info["server"] = sc
 	info["direction"] = "out"
 	info["data"] = line
 	sc.dispatchRawOut(info)
