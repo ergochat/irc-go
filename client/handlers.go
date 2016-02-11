@@ -58,6 +58,11 @@ func capHandler(event string, info eventmgr.InfoMap) {
 	}
 }
 
+func pingHandler(event string, info eventmgr.InfoMap) {
+	sc := info["server"].(*ServerConnection)
+	sc.Send(nil, "", "PONG", info["params"].([]string)...)
+}
+
 func sendRegistration(sc *ServerConnection) {
 	sc.Nick = sc.InitialNick
 	sc.Send(nil, "", "NICK", sc.InitialNick)

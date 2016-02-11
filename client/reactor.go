@@ -31,6 +31,7 @@ func NewReactor() Reactor {
 	newReactor.RegisterEvent("in", "CAP", capHandler, -10)
 	newReactor.RegisterEvent("in", "RPL_WELCOME", welcomeHandler, -10)
 	newReactor.RegisterEvent("in", "RPL_ISUPPORT", featuresHandler, -10)
+	newReactor.RegisterEvent("in", "PING", pingHandler, -10)
 
 	return newReactor
 }

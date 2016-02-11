@@ -253,6 +253,19 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		return
 	}
 
+	// test PING
+	sendMessage(conn, nil, "example.com", "PING", "3847362")
+
+	message, _ = reader.ReadString('\n')
+	if message != "PONG 3847362\r\n" {
+		t.Error(
+			"Did not receive PONG message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
 	// shutdown client
 	reactor.Shutdown(" Get mad!  ")
 
