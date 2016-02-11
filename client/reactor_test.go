@@ -197,8 +197,21 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		return
 	}
 
-	// make sure casemapping is set properly
-	sendMessage(conn, nil, "example.com", "005", "dan", "CASEMAPPING=ascii", "are available on this server")
+	// make sure LINELEN gets set correctly
+	sendMessage(conn, nil, "example.com", "005", "dan", "LINELEN=", "are available on this server")
+
+	if client.Features["LINELEN"].(int) != 512 {
+		t.Error(
+			"LINELEN default was not set with 005, expected",
+			512,
+			"got",
+			client.Features["LINELEN"],
+		)
+		return
+	}
+
+	// make sure casemapping and other ISUPPORT values are set properly
+	sendMessage(conn, nil, "example.com", "005", "dan", "CASEMAPPING=ascii", "NICKLEN=27", "USERLEN=", "SAFELIST", "are available on this server")
 
 	if client.Casemapping != ircmap.ASCII {
 		t.Error(
@@ -206,6 +219,36 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 			ircmap.ASCII,
 			"got",
 			client.Casemapping,
+		)
+		return
+	}
+
+	if client.Features["NICKLEN"].(int) != 27 {
+		t.Error(
+			"NICKLEN was not set with 005, expected",
+			27,
+			"got",
+			client.Features["NICKLEN"],
+		)
+		return
+	}
+
+	if client.Features["USERLEN"] != nil {
+		t.Error(
+			"USERLEN was not set with 005, expected",
+			nil,
+			"got",
+			client.Features["USERLEN"],
+		)
+		return
+	}
+
+	if client.Features["SAFELIST"].(bool) != true {
+		t.Error(
+			"SAFELIST was not set with 005, expected",
+			true,
+			"got",
+			client.Features["SAFELIST"],
 		)
 		return
 	}
