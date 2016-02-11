@@ -13,8 +13,11 @@ import (
 type MappingType int
 
 const (
+	// NONE represents no casemapping.
+	NONE MappingType = 0 + iota
+
 	// ASCII represents the traditional "ascii" casemapping.
-	ASCII MappingType = 1 + iota
+	ASCII
 
 	// RFC1459 represents the casemapping defined by "rfc1459"
 	RFC1459
