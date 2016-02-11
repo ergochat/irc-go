@@ -134,6 +134,7 @@ func (sc *ServerConnection) ReceiveLoop() {
 
 		info := eventmgr.NewInfoMap()
 		info["server"] = sc
+		info["direction"] = "in"
 		info["tags"] = message.Tags
 		info["prefix"] = message.Prefix
 		info["command"] = cmd
@@ -184,6 +185,18 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 	info["direction"] = "out"
 	info["data"] = line
 	sc.dispatchRawOut(info)
+
+	// dispatch real event
+	info = eventmgr.NewInfoMap()
+	info["server"] = sc
+	info["direction"] = "out"
+	info["tags"] = tags
+	info["prefix"] = prefix
+	info["command"] = command
+	info["params"] = params
+
+	// IRC commands are case-insensitive
+	sc.dispatchOut(strings.ToUpper(command), info)
 }
 
 // dispatchRawIn dispatches raw inbound messages.
