@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanielOaks/girc-go/ircmap"
 	"github.com/DanielOaks/girc-go/ircmsg"
 )
 
@@ -192,6 +193,19 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 			"dan",
 			"got",
 			client.Nick,
+		)
+		return
+	}
+
+	// make sure casemapping is set properly
+	sendMessage(conn, nil, "example.com", "005", "dan", "CASEMAPPING=ascii", "are available on this server")
+
+	if client.Casemapping != ircmap.ASCII {
+		t.Error(
+			"Casemapping was not set with 005, expected",
+			ircmap.ASCII,
+			"got",
+			client.Casemapping,
 		)
 		return
 	}

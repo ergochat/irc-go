@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/DanielOaks/girc-go/eventmgr"
+	"github.com/DanielOaks/girc-go/ircmap"
 )
 
 // welcomeHandler sets the nick to the first parameter of the 001 message.
@@ -15,6 +16,22 @@ import (
 func welcomeHandler(event string, info eventmgr.InfoMap) {
 	sc := info["server"].(*ServerConnection)
 	sc.Nick = info["params"].([]string)[0]
+}
+
+func featuresHandler(event string, info eventmgr.InfoMap) {
+	sc := info["server"].(*ServerConnection)
+
+	// parse features into our internal list
+	tags := info["params"].([]string)
+	tags = tags[1 : len(tags)-1] // remove first and last params
+	sc.Features.Parse(tags...)
+
+	if sc.Casemapping == ircmap.NONE {
+		name, exists := sc.Features["CASEMAPPING"]
+		if exists {
+			sc.Casemapping = ircmap.Mappings[name.(string)]
+		}
+	}
 }
 
 func capHandler(event string, info eventmgr.InfoMap) {

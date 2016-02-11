@@ -14,14 +14,16 @@ import (
 	"time"
 
 	"github.com/DanielOaks/girc-go/eventmgr"
+	"github.com/DanielOaks/girc-go/ircmap"
 	"github.com/DanielOaks/girc-go/ircmsg"
 )
 
 // ServerConnection is a connection to a single server.
 type ServerConnection struct {
-	Name       string
-	Connected  bool
-	Registered bool
+	Name        string
+	Connected   bool
+	Registered  bool
+	Casemapping ircmap.MappingType
 
 	// internal stuff
 	connection net.Conn
@@ -29,8 +31,8 @@ type ServerConnection struct {
 	eventsOut  eventmgr.EventManager
 
 	// data we keep track of
-	// Features ServerFeatures
-	Caps ClientCapabilities
+	Features ServerFeatures
+	Caps     ClientCapabilities
 
 	// details users must supply before connection
 	Nick            string
@@ -46,9 +48,12 @@ func newServerConnection(name string) *ServerConnection {
 
 	sc.Name = name
 	sc.Caps = NewClientCapabilities()
+	sc.Features = make(ServerFeatures)
 
 	sc.Caps.AddWantedCaps("account-notify", "away-notify", "extended-join", "multi-prefix", "sasl")
 	sc.Caps.AddWantedCaps("account-tag", "chghost", "echo-message", "invite-notify", "server-time", "userhost-in-names")
+
+	sc.Features.Parse("CHANTYPES=#", "LINELEN=512", "PREFIX=(ov)@+")
 
 	return &sc
 }
