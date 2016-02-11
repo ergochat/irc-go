@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -120,15 +121,26 @@ func (sc *ServerConnection) ReceiveLoop() {
 
 		// dispatch events
 		message, err := ircmsg.ParseLine(line)
+
+		// convert numerics to names
+		cmd := message.Command
+		num, err := strconv.Atoi(cmd)
+		if err == nil {
+			name, exists := Numerics[num]
+			if exists {
+				cmd = name
+			}
+		}
+
 		info := eventmgr.NewInfoMap()
 		info["server"] = sc
 		info["tags"] = message.Tags
 		info["prefix"] = message.Prefix
-		info["command"] = message.Command
+		info["command"] = cmd
 		info["params"] = message.Params
 
 		// IRC commands are case-insensitive
-		sc.dispatchIn(strings.ToUpper(message.Command), info)
+		sc.dispatchIn(strings.ToUpper(cmd), info)
 	}
 
 	sc.connection.Close()

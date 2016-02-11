@@ -29,8 +29,8 @@ func NewReactor() Reactor {
 
 	// add the default handlers
 	newReactor.RegisterEvent("in", "CAP", capHandler, -10)
-	newReactor.RegisterEvent("in", "001", welcomeHandler, -10)
-	newReactor.RegisterEvent("in", "005", featuresHandler, -10)
+	newReactor.RegisterEvent("in", "RPL_WELCOME", welcomeHandler, -10)
+	newReactor.RegisterEvent("in", "RPL_ISUPPORT", featuresHandler, -10)
 
 	return newReactor
 }
