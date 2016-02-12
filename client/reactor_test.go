@@ -135,11 +135,11 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		return
 	}
 
-	sendMessage(conn, nil, "example.com", "CAP", "*", "LS", "*", "multi-prefix userhost-in-names sasl=PLAIN")
+	sendMessage(conn, nil, "example.com", "CAP", "*", "LS", "*", "multi-prefix userhost-in-names")
 	sendMessage(conn, nil, "example.com", "CAP", "*", "LS", "chghost")
 
 	message, _ = reader.ReadString('\n')
-	if message != "CAP REQ :chghost multi-prefix sasl userhost-in-names\r\n" {
+	if message != "CAP REQ :chghost multi-prefix userhost-in-names\r\n" {
 		t.Error(
 			"Did not receive CAP REQ message, received: [",
 			message,
@@ -151,7 +151,7 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 	// these should be silently ignored
 	fmt.Fprintf(conn, "\r\n\r\n\r\n")
 
-	sendMessage(conn, nil, "example.com", "CAP", "*", "ACK", "chghost multi-prefix userhost-in-names sasl")
+	sendMessage(conn, nil, "example.com", "CAP", "*", "ACK", "chghost multi-prefix userhost-in-names")
 
 	message, _ = reader.ReadString('\n')
 	if message != "CAP END\r\n" {
@@ -265,6 +265,21 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		)
 		return
 	}
+
+	// test CAP NEW
+	sendMessage(conn, nil, "example.com", "CAP", client.Nick, "NEW", "sasl=plain")
+
+	message, _ = reader.ReadString('\n')
+	if message != "CAP REQ sasl\r\n" {
+		t.Error(
+			"Did not receive CAP REQ sasl message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
+	sendMessage(conn, nil, "example.com", "CAP", client.Nick, "ACK", "sasl")
 
 	// shutdown client
 	reactor.Shutdown(" Get mad!  ")

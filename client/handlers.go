@@ -38,13 +38,16 @@ func capHandler(event string, info eventmgr.InfoMap) {
 	sc := info["server"].(*ServerConnection)
 	params := info["params"].([]string)
 	subcommand := strings.ToUpper(params[1])
-	if !sc.Registered && (subcommand == "ACK" || subcommand == "NAK") {
-		sendRegistration(sc)
+
+	if subcommand == "ACK" {
+		sc.Caps.EnableCaps(strings.Split(params[2], " ")...)
+	} else if subcommand == "NAK" {
+		sc.Caps.DisableCaps(strings.Split(params[2], " ")...)
 	} else if subcommand == "LS" {
 		if len(params) > 3 {
-			sc.Caps.AddCaps(strings.Split(params[3], " "))
+			sc.Caps.AddCaps(strings.Split(params[3], " ")...)
 		} else {
-			sc.Caps.AddCaps(strings.Split(params[2], " "))
+			sc.Caps.AddCaps(strings.Split(params[2], " ")...)
 			capsToRequest := sc.Caps.ToRequestLine()
 
 			if len(capsToRequest) > 0 {
@@ -55,6 +58,19 @@ func capHandler(event string, info eventmgr.InfoMap) {
 				sc.Send(nil, "", "CAP", "END")
 			}
 		}
+	} else if subcommand == "NEW" {
+		sc.Caps.AddCaps(strings.Split(params[2], " ")...)
+		capsToRequest := sc.Caps.ToRequestLine()
+
+		if len(capsToRequest) > 0 {
+			sc.Send(nil, "", "CAP", "REQ", capsToRequest)
+		}
+	} else if subcommand == "DEL" {
+		sc.Caps.DelCaps(strings.Split(params[2], " ")...)
+	}
+
+	if !sc.Registered && (subcommand == "ACK" || subcommand == "NAK") {
+		sendRegistration(sc)
 	}
 }
 
@@ -67,4 +83,6 @@ func sendRegistration(sc *ServerConnection) {
 	sc.Nick = sc.InitialNick
 	sc.Send(nil, "", "NICK", sc.InitialNick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
+
+	sc.Registered = true
 }

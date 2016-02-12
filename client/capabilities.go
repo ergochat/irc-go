@@ -10,7 +10,7 @@ import "sort"
 // a ServerConnection.
 type ClientCapabilities struct {
 	Avaliable map[string]*string
-	Enabled   map[string]*string
+	Enabled   map[string]bool
 	Wanted    []string
 }
 
@@ -19,7 +19,7 @@ func NewClientCapabilities() ClientCapabilities {
 	var cc ClientCapabilities
 
 	cc.Avaliable = make(map[string]*string, 0)
-	cc.Enabled = make(map[string]*string, 0)
+	cc.Enabled = make(map[string]bool, 0)
 	cc.Wanted = make([]string, 0)
 
 	return cc
@@ -42,7 +42,7 @@ func (cc *ClientCapabilities) AddWantedCaps(caps ...string) {
 }
 
 // AddCaps adds capabilities from LS lists to our Avaliable map.
-func (cc *ClientCapabilities) AddCaps(tags []string) {
+func (cc *ClientCapabilities) AddCaps(tags ...string) {
 	var name string
 	var value *string
 
@@ -57,6 +57,28 @@ func (cc *ClientCapabilities) AddCaps(tags []string) {
 		}
 
 		cc.Avaliable[name] = value
+	}
+}
+
+// EnableCaps enables the given capabilities.
+func (cc *ClientCapabilities) EnableCaps(caps ...string) {
+	for _, name := range caps {
+		cc.Enabled[name] = true
+	}
+}
+
+// DisableCaps disbles the given capabilities.
+func (cc *ClientCapabilities) DisableCaps(caps ...string) {
+	for _, name := range caps {
+		delete(cc.Enabled, name)
+	}
+}
+
+// DelCaps removes the given capabilities.
+func (cc *ClientCapabilities) DelCaps(caps ...string) {
+	for _, name := range caps {
+		delete(cc.Avaliable, name)
+		delete(cc.Enabled, name)
 	}
 }
 

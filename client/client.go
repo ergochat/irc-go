@@ -52,7 +52,7 @@ func newServerConnection(name string) *ServerConnection {
 	sc.Features = make(ServerFeatures)
 
 	sc.Caps.AddWantedCaps("account-notify", "away-notify", "extended-join", "multi-prefix", "sasl")
-	sc.Caps.AddWantedCaps("account-tag", "chghost", "echo-message", "invite-notify", "server-time", "userhost-in-names")
+	sc.Caps.AddWantedCaps("account-tag", "cap-notify", "chghost", "echo-message", "invite-notify", "server-time", "userhost-in-names")
 
 	sc.Features.Parse("CHANTYPES=#", "LINELEN=512", "PREFIX=(ov)@+")
 
