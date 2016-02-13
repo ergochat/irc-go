@@ -281,6 +281,22 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 
 	sendMessage(conn, nil, "example.com", "CAP", client.Nick, "ACK", "sasl")
 
+	sendMessage(conn, nil, "example.com", "CAP", client.Nick, "DEL", "sasl")
+
+	_, exists := client.Caps.Avaliable["sasl"]
+	if exists {
+		t.Error(
+			"SASL cap is still available on client after CAP DEL sasl",
+		)
+	}
+
+	_, exists = client.Caps.Enabled["sasl"]
+	if exists {
+		t.Error(
+			"SASL cap still enabled on client after CAP DEL sasl",
+		)
+	}
+
 	// shutdown client
 	reactor.Shutdown(" Get mad!  ")
 

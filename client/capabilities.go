@@ -63,14 +63,12 @@ func (cc *ClientCapabilities) AddCaps(tags ...string) {
 // EnableCaps enables the given capabilities.
 func (cc *ClientCapabilities) EnableCaps(caps ...string) {
 	for _, name := range caps {
-		cc.Enabled[name] = true
-	}
-}
-
-// DisableCaps disbles the given capabilities.
-func (cc *ClientCapabilities) DisableCaps(caps ...string) {
-	for _, name := range caps {
-		delete(cc.Enabled, name)
+		if strings.HasPrefix(name, "-") {
+			name = strings.TrimPrefix(name, "-")
+			delete(cc.Enabled, name)
+		} else {
+			cc.Enabled[name] = true
+		}
 	}
 }
 

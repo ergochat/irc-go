@@ -41,8 +41,6 @@ func capHandler(event string, info eventmgr.InfoMap) {
 
 	if subcommand == "ACK" {
 		sc.Caps.EnableCaps(strings.Split(params[2], " ")...)
-	} else if subcommand == "NAK" {
-		sc.Caps.DisableCaps(strings.Split(params[2], " ")...)
 	} else if subcommand == "LS" {
 		if len(params) > 3 {
 			sc.Caps.AddCaps(strings.Split(params[3], " ")...)
