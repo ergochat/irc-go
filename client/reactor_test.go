@@ -211,12 +211,12 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 	}
 
 	// make sure casemapping and other ISUPPORT values are set properly
-	sendMessage(conn, nil, "example.com", "005", "dan", "CASEMAPPING=ascii", "NICKLEN=27", "USERLEN=", "SAFELIST", "are available on this server")
+	sendMessage(conn, nil, "example.com", "005", "dan", "CASEMAPPING=rfc3454", "NICKLEN=27", "USERLEN=", "SAFELIST", "are available on this server")
 
-	if client.Casemapping != ircmap.ASCII {
+	if client.Casemapping != ircmap.RFC3454 {
 		t.Error(
 			"Casemapping was not set with 005, expected",
-			ircmap.ASCII,
+			ircmap.RFC3454,
 			"got",
 			client.Casemapping,
 		)
@@ -318,6 +318,18 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 			"Did not receive NOTICE message, received: [",
 			message,
 			"]",
+		)
+		return
+	}
+
+	// test casefolding
+	target, _ := client.Casefold("#beßtchannEL")
+	if target != "#besstchannel" {
+		t.Error(
+			"Channel name was not casefolded correctly, expected",
+			"#besstchannel",
+			"got",
+			target,
 		)
 		return
 	}

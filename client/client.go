@@ -169,6 +169,11 @@ func (sc *ServerConnection) Shutdown(message string) {
 	sc.connection.Close()
 }
 
+// Casefold folds the given string using the server's casemapping.
+func (sc *ServerConnection) Casefold(message string) (string, error) {
+	return ircmap.Casefold(sc.Casemapping, message)
+}
+
 // Send sends an IRC message to the server.
 func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) {
 	ircmsg := ircmsg.MakeMessage(tags, prefix, command, params...)
