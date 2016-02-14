@@ -22,6 +22,7 @@ var escapetests = []testcase{
 
 var unescapetests = []testcase{
 	{"te$st", "test"},
+	{"test$c", "test\x03"},
 }
 
 func TestEscape(t *testing.T) {
