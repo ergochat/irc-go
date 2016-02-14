@@ -172,7 +172,16 @@ func Unescape(in string) string {
 			} else if in[1] == 'c' {
 				out += colour
 
-				in = in[3:] // also strip leading '['
+				in = in[2:]
+
+				// ensure '[' follows before doing further processing
+				if len(in) < 1 || in[0] != '[' {
+					continue
+				} else {
+					// strip leading '['
+					in = in[1:]
+				}
+
 				splitin := strings.SplitN(in, "]", 2)
 				colournames := strings.Split(splitin[0], ",")
 				in = splitin[1]
