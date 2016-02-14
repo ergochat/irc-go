@@ -297,6 +297,31 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		)
 	}
 
+	// test actions
+	client.Msg(nil, "coalguys", "Isn't this such an $bamazing$r day?!", true)
+
+	message, _ = reader.ReadString('\n')
+	if message != "PRIVMSG coalguys :Isn't this such an \x02amazing\x0f day?!\r\n" {
+		t.Error(
+			"Did not receive PRIVMSG message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
+	client.Notice(nil, "coalguys", "Isn't this such a $c[red]great$c day?", true)
+
+	message, _ = reader.ReadString('\n')
+	if message != "NOTICE coalguys :Isn't this such a \x034great\x03 day?\r\n" {
+		t.Error(
+			"Did not receive NOTICE message, received: [",
+			message,
+			"]",
+		)
+		return
+	}
+
 	// shutdown client
 	reactor.Shutdown(" Get mad!  ")
 
