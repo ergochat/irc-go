@@ -4,7 +4,8 @@ This is a bunch of self-contained packages that help with IRC development in Go.
 
 ---
 
-[![GoDoc](https://godoc.org/github.com/DanielOaks/girc-go?status.svg)](https://godoc.org/github.com/DanielOaks/girc-go) [![Build Status](https://travis-ci.org/DanielOaks/girc-go.svg?branch=master)](https://travis-ci.org/DanielOaks/girc-go) [![Coverage Status](https://coveralls.io/repos/DanielOaks/girc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/DanielOaks/girc-go?branch=master)
+[![GoDoc](https://godoc.org/github.com/DanielOaks/girc-go?status.svg)](https://godoc.org/github.com/DanielOaks/girc-go) [![Build Status](https://travis-ci.org/DanielOaks/girc-go.svg?branch=master)](https://travis-ci.org/DanielOaks/girc-go) [![Coverage Status](https://coveralls.io/repos/DanielOaks/girc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/DanielOaks/girc-go?branch=master) [![Go Report
+Card](https://goreportcard.com/badge/github.com/DanielOaks/girc-go)](https://goreportcard.com/report/github.com/DanielOaks/girc-go)
 
 ---
 
