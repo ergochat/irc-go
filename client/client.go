@@ -140,6 +140,17 @@ func (sc *ServerConnection) ReceiveLoop() {
 		info["command"] = cmd
 		info["params"] = message.Params
 
+		// simplify event
+		err = SimplifyEvent(info)
+
+		if err != nil {
+			fmt.Println("Could not simplify incoming IRC message, skipping line.")
+			fmt.Println("line:", line)
+			fmt.Println("error:", err)
+			fmt.Println("info:", info)
+			continue
+		}
+
 		// IRC commands are case-insensitive
 		sc.dispatchIn(strings.ToUpper(cmd), info)
 	}
