@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -185,13 +184,13 @@ func (sc *ServerConnection) Casefold(message string) (string, error) {
 	return ircmap.Casefold(sc.Casemapping, message)
 }
 
-// Send sends an IRC message to the server.
-func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) {
+// Send sends an IRC message to the server. If the message cannot be converted
+// to a raw IRC line, an error is returned.
+func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) error {
 	ircmsg := ircmsg.MakeMessage(tags, prefix, command, params...)
 	line, err := ircmsg.Line()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return err
 	}
 	fmt.Fprintf(sc.connection, line)
 
@@ -213,6 +212,8 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 
 	// IRC commands are case-insensitive
 	sc.dispatchOut(strings.ToUpper(command), info)
+
+	return nil
 }
 
 // dispatchRawIn dispatches raw inbound messages.
