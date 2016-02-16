@@ -35,6 +35,34 @@ func TestPlainConnection(t *testing.T) {
 	testServerConnection(t, reactor, client, listener)
 }
 
+func TestFailingConnection(t *testing.T) {
+	reactor := NewReactor()
+	client := reactor.CreateServer("local")
+
+	// we mock up a server connection to test the client
+	listener, _ := net.Listen("tcp", ":0")
+
+	// Try to connect before setting InitialNick and InitialUser
+	err := client.Connect(listener.Addr().String(), false, nil)
+
+	if err == nil {
+		t.Error(
+			"ServerConnection allowed connection before InitialNick and InitialUser were set",
+		)
+	}
+
+	// Actually set attributes and fail properly this time
+	client.InitialNick = "test"
+	client.InitialUser = "t"
+	client.Connect("here is a malformed address:6667", false, nil)
+
+	if err == nil {
+		t.Error(
+			"ServerConnection allowed connection with a blatently malformed address",
+		)
+	}
+}
+
 func TestTLSConnection(t *testing.T) {
 	reactor := NewReactor()
 	client := reactor.CreateServer("local")
@@ -197,6 +225,11 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		return
 	}
 
+	// send 002/003/004
+	sendMessage(conn, nil, "example.com", "002", "dan", "Your host is example.com, running version latest")
+	sendMessage(conn, nil, "example.com", "003", "dan", "This server was created almost no time ago!")
+	sendMessage(conn, nil, "example.com", "004", "dan", "example.com", "latest", "r", "b", "b")
+
 	// make sure LINELEN gets set correctly
 	sendMessage(conn, nil, "example.com", "005", "dan", "LINELEN=", "are available on this server")
 
@@ -297,6 +330,15 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 		)
 	}
 
+	sendMessage(conn, nil, "example.com", "CAP", client.Nick, "ACK", "-chghost")
+
+	_, exists = client.Caps.Enabled["chghost"]
+	if exists {
+		t.Error(
+			"chghost cap still enabled on client after ACK -chghost",
+		)
+	}
+
 	// test actions
 	client.Msg(nil, "coalguys", "Isn't this such an $bamazing$r day?!", true)
 
@@ -345,6 +387,14 @@ func testServerConnection(t *testing.T, reactor Reactor, client *ServerConnectio
 			"]",
 		)
 		return
+	}
+
+	// test malformed Send
+	err := client.Send(nil, "", "PRIVMSG", "MyFriend", "", "param with spaces", "Hey man!")
+	if err == nil {
+		t.Error(
+			"ServerConnection allowed a Send with empty and params with spaces before the last param",
+		)
 	}
 
 	// close connection and listener
