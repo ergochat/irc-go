@@ -13,7 +13,7 @@ import (
 // EventTransforms holds the set of event transformations we apply when
 // simplifying given events.
 var EventTransforms = map[string]EventTransform{
-	"RPL_WELCOME": EventTransform{
+	"RPL_WELCOME": {
 		StringParams: map[int]string{
 			1: "message",
 		},
