@@ -39,6 +39,9 @@ type ServerConnection struct {
 	InitialNick     string
 	InitialUser     string
 	InitialRealName string
+
+	// options
+	SimplifyEvents bool
 }
 
 // newServerConnection returns an initialised ServerConnection, for internal
@@ -54,6 +57,8 @@ func newServerConnection(name string) *ServerConnection {
 	sc.Caps.AddWantedCaps("account-tag", "cap-notify", "chghost", "echo-message", "invite-notify", "server-time", "userhost-in-names")
 
 	sc.Features.Parse("CHANTYPES=#", "LINELEN=512", "PREFIX=(ov)@+")
+
+	sc.SimplifyEvents = true
 
 	return &sc
 }
@@ -140,14 +145,16 @@ func (sc *ServerConnection) ReceiveLoop() {
 		info["params"] = message.Params
 
 		// simplify event
-		err = SimplifyEvent(info)
+		if sc.SimplifyEvents {
+			err = SimplifyEvent(info)
 
-		if err != nil {
-			fmt.Println("Could not simplify incoming IRC message, skipping line.")
-			fmt.Println("line:", line)
-			fmt.Println("error:", err)
-			fmt.Println("info:", info)
-			continue
+			if err != nil {
+				fmt.Println("Could not simplify incoming IRC message, skipping line.")
+				fmt.Println("line:", line)
+				fmt.Println("error:", err)
+				fmt.Println("info:", info)
+				continue
+			}
 		}
 
 		// IRC commands are case-insensitive
