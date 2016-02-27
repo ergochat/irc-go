@@ -15,6 +15,10 @@ var decodetests = []testcode{
 		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
 	{"@time=12732;re TEST *\r\n",
 		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*")},
+	{":dan- TESTMSG\r\n",
+		MakeMessage(nil, "dan-", "TESTMSG")},
+	{":dan- TESTMSG dan \r\n",
+		MakeMessage(nil, "dan-", "TESTMSG", "dan", "")},
 }
 
 func TestDecode(t *testing.T) {

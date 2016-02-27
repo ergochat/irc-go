@@ -64,24 +64,26 @@ func ParseLine(line string) (IrcMessage, error) {
 	// command
 	splitLine := strings.SplitN(line, " ", 2)
 	ircmsg.Command = strings.ToUpper(splitLine[0])
-	line = strings.TrimLeft(splitLine[1], " ")
+	if len(splitLine) > 1 {
+		line = strings.TrimLeft(splitLine[1], " ")
 
-	// parameters
-	for {
-		// handle trailing
-		if line[0] == ':' {
-			ircmsg.Params = append(ircmsg.Params, line[1:])
-			break
-		}
+		// parameters
+		for {
+			// handle trailing
+			if len(line) > 0 && line[0] == ':' {
+				ircmsg.Params = append(ircmsg.Params, line[1:])
+				break
+			}
 
-		// regular params
-		splitLine := strings.SplitN(line, " ", 2)
-		ircmsg.Params = append(ircmsg.Params, splitLine[0])
+			// regular params
+			splitLine := strings.SplitN(line, " ", 2)
+			ircmsg.Params = append(ircmsg.Params, splitLine[0])
 
-		if len(splitLine) > 1 {
-			line = strings.TrimLeft(splitLine[1], " ")
-		} else {
-			break
+			if len(splitLine) > 1 {
+				line = strings.TrimLeft(splitLine[1], " ")
+			} else {
+				break
+			}
 		}
 	}
 
