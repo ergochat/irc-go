@@ -35,11 +35,13 @@ type ServerConnection struct {
 	Caps     ClientCapabilities
 
 	// details users must supply before connection
-	Nick            string
-	InitialNick     string
-	InitialUser     string
-	InitialRealName string
-	ConnectionPass  string
+	Nick              string
+	InitialNick       string
+	FallbackNicks     []string
+	fallbackNickIndex int
+	InitialUser       string
+	InitialRealName   string
+	ConnectionPass    string
 
 	// options
 	SimplifyEvents bool

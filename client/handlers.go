@@ -4,6 +4,7 @@
 package gircclient
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/DanielOaks/girc-go/eventmgr"
@@ -16,6 +17,8 @@ import (
 func welcomeHandler(event string, info eventmgr.InfoMap) {
 	sc := info["server"].(*ServerConnection)
 	sc.Nick = info["params"].([]string)[0]
+
+	sc.Registered = true
 }
 
 func featuresHandler(event string, info eventmgr.InfoMap) {
@@ -77,6 +80,23 @@ func pingHandler(event string, info eventmgr.InfoMap) {
 	sc.Send(nil, "", "PONG", info["params"].([]string)...)
 }
 
+func nicknameInUseHandler(event string, info eventmgr.InfoMap) {
+	sc := info["server"].(*ServerConnection)
+	if sc.Registered {
+		return
+	}
+
+	// set new nickname
+	if len(sc.FallbackNicks) <= sc.fallbackNickIndex {
+		sc.Nick = fmt.Sprintf("%s_", sc.Nick)
+	} else {
+		sc.Nick = sc.FallbackNicks[sc.fallbackNickIndex]
+		sc.fallbackNickIndex++
+	}
+
+	sc.Send(nil, "", "NICK", sc.Nick)
+}
+
 func sendRegistration(sc *ServerConnection) {
 	sc.Nick = sc.InitialNick
 	if sc.ConnectionPass != "" {
@@ -84,6 +104,4 @@ func sendRegistration(sc *ServerConnection) {
 	}
 	sc.Send(nil, "", "NICK", sc.InitialNick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
-
-	sc.Registered = true
 }
