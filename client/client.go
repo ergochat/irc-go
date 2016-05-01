@@ -162,6 +162,9 @@ func (sc *ServerConnection) ReceiveLoop() {
 	}
 
 	sc.connection.Close()
+	info := eventmgr.NewInfoMap()
+	info["server"] = sc
+	sc.dispatchOut("server disconnected", info)
 }
 
 // RegisterEvent registers a new handler for the given event.
