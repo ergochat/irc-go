@@ -79,6 +79,9 @@ func pingHandler(event string, info eventmgr.InfoMap) {
 
 func sendRegistration(sc *ServerConnection) {
 	sc.Nick = sc.InitialNick
+	if sc.ConnectionPass != "" {
+		sc.Send(nil, "", "PASS", sc.ConnectionPass)
+	}
 	sc.Send(nil, "", "NICK", sc.InitialNick)
 	sc.Send(nil, "", "USER", sc.InitialUser, "0", "*", sc.InitialRealName)
 

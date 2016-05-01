@@ -39,6 +39,7 @@ type ServerConnection struct {
 	InitialNick     string
 	InitialUser     string
 	InitialRealName string
+	ConnectionPass  string
 
 	// options
 	SimplifyEvents bool
