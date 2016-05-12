@@ -95,79 +95,98 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	return nil
 }
 
+// WaitForConnection waits for the serverConnection to become available.
+// This is used when writing a custom event loop.
+func (sc *ServerConnection) WaitForConnection() {
+	waitTime, _ := time.ParseDuration("10ms")
+	for sc.connection == nil {
+		time.Sleep(waitTime)
+	}
+}
+
+// ProcessIncomingLine processes the incoming IRC line.
+// This is used when writing a custom event loop.
+func (sc *ServerConnection) ProcessIncomingLine(line string) {
+	line = strings.Trim(line, "\r\n")
+
+	// ignore empty lines
+	if len(line) < 1 {
+		return
+	}
+
+	// dispatch raw
+	rawInfo := eventmgr.NewInfoMap()
+	rawInfo["server"] = sc
+	rawInfo["direction"] = "in"
+	rawInfo["data"] = line
+
+	sc.dispatchRawIn(rawInfo)
+
+	// dispatch events
+	message, err := ircmsg.ParseLine(line)
+
+	// convert numerics to names
+	cmd := message.Command
+	num, err := strconv.Atoi(cmd)
+	if err == nil {
+		name, exists := Numerics[num]
+		if exists {
+			cmd = name
+		}
+	}
+
+	info := eventmgr.NewInfoMap()
+	info["server"] = sc
+	info["direction"] = "in"
+	info["tags"] = message.Tags
+	info["prefix"] = message.Prefix
+	info["command"] = cmd
+	info["params"] = message.Params
+
+	// simplify event
+	if sc.SimplifyEvents {
+		err = SimplifyEvent(info)
+
+		if err != nil {
+			fmt.Println("Could not simplify incoming IRC message, skipping line.")
+			fmt.Println("line:", line)
+			fmt.Println("error:", err)
+			fmt.Println("info:", info)
+			return
+		}
+	}
+
+	// IRC commands are case-insensitive
+	sc.dispatchIn(strings.ToUpper(cmd), info)
+}
+
+// Disconnect closes the IRC socket.
+// It is used when writing your own event loop.
+func (sc *ServerConnection) Disconnect() {
+	sc.Connected = false
+	sc.connection.Close()
+	info := eventmgr.NewInfoMap()
+	info["server"] = sc
+	sc.dispatchOut("server disconnected", info)
+}
+
 // ReceiveLoop runs a loop of receiving and dispatching new messages.
 func (sc *ServerConnection) ReceiveLoop() {
 	// wait for the connection to become available
-	for sc.connection == nil {
-		waitTime, _ := time.ParseDuration("10ms")
-		time.Sleep(waitTime)
-	}
+	sc.WaitForConnection()
 
 	reader := bufio.NewReader(sc.connection)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			sc.Connected = false
 			break
 		}
-		line = strings.Trim(line, "\r\n")
 
-		// ignore empty lines
-		if len(line) < 1 {
-			continue
-		}
-
-		// dispatch raw
-		rawInfo := eventmgr.NewInfoMap()
-		rawInfo["server"] = sc
-		rawInfo["direction"] = "in"
-		rawInfo["data"] = line
-
-		sc.dispatchRawIn(rawInfo)
-
-		// dispatch events
-		message, err := ircmsg.ParseLine(line)
-
-		// convert numerics to names
-		cmd := message.Command
-		num, err := strconv.Atoi(cmd)
-		if err == nil {
-			name, exists := Numerics[num]
-			if exists {
-				cmd = name
-			}
-		}
-
-		info := eventmgr.NewInfoMap()
-		info["server"] = sc
-		info["direction"] = "in"
-		info["tags"] = message.Tags
-		info["prefix"] = message.Prefix
-		info["command"] = cmd
-		info["params"] = message.Params
-
-		// simplify event
-		if sc.SimplifyEvents {
-			err = SimplifyEvent(info)
-
-			if err != nil {
-				fmt.Println("Could not simplify incoming IRC message, skipping line.")
-				fmt.Println("line:", line)
-				fmt.Println("error:", err)
-				fmt.Println("info:", info)
-				continue
-			}
-		}
-
-		// IRC commands are case-insensitive
-		sc.dispatchIn(strings.ToUpper(cmd), info)
+		sc.ProcessIncomingLine(line)
 	}
 
-	sc.connection.Close()
-	info := eventmgr.NewInfoMap()
-	info["server"] = sc
-	sc.dispatchOut("server disconnected", info)
+	sc.Disconnect()
 }
 
 // RegisterEvent registers a new handler for the given event.
