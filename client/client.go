@@ -26,9 +26,9 @@ type ServerConnection struct {
 	Casemapping ircmap.MappingType
 
 	// internal stuff
-	connection net.Conn
-	eventsIn   eventmgr.EventManager
-	eventsOut  eventmgr.EventManager
+	RawConnection net.Conn
+	eventsIn      eventmgr.EventManager
+	eventsOut     eventmgr.EventManager
 
 	// data we keep track of
 	Features ServerFeatures
@@ -87,7 +87,7 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 		return err
 	}
 
-	sc.connection = conn
+	sc.RawConnection = conn
 	sc.Connected = true
 
 	sc.Send(nil, "", "CAP", "LS", "302")
@@ -99,7 +99,7 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 // This is used when writing a custom event loop.
 func (sc *ServerConnection) WaitForConnection() {
 	waitTime, _ := time.ParseDuration("10ms")
-	for sc.connection == nil {
+	for sc.RawConnection == nil {
 		time.Sleep(waitTime)
 	}
 }
@@ -164,7 +164,7 @@ func (sc *ServerConnection) ProcessIncomingLine(line string) {
 // It is used when writing your own event loop.
 func (sc *ServerConnection) Disconnect() {
 	sc.Connected = false
-	sc.connection.Close()
+	sc.RawConnection.Close()
 	info := eventmgr.NewInfoMap()
 	info["server"] = sc
 	sc.dispatchOut("server disconnected", info)
@@ -175,7 +175,7 @@ func (sc *ServerConnection) ReceiveLoop() {
 	// wait for the connection to become available
 	sc.WaitForConnection()
 
-	reader := bufio.NewReader(sc.connection)
+	reader := bufio.NewReader(sc.RawConnection)
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -208,7 +208,7 @@ func (sc *ServerConnection) RegisterEvent(direction string, name string, handler
 func (sc *ServerConnection) Shutdown(message string) {
 	sc.Send(nil, "", "QUIT", message)
 	sc.Connected = false
-	sc.connection.Close()
+	sc.RawConnection.Close()
 }
 
 // Casefold folds the given string using the server's casemapping.
@@ -224,7 +224,7 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(sc.connection, line)
+	fmt.Fprintf(sc.RawConnection, line)
 
 	// dispatch raw event
 	info := eventmgr.NewInfoMap()
