@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanielOaks/girc-go/eventmgr"
+	"github.com/DanielOaks/eventmgr"
 	"github.com/DanielOaks/girc-go/ircmap"
 	"github.com/DanielOaks/girc-go/ircmsg"
 )

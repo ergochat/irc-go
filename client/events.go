@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/DanielOaks/girc-go/eventmgr"
+	"github.com/DanielOaks/eventmgr"
 )
 
 // EventTransforms holds the set of event transformations we apply when
