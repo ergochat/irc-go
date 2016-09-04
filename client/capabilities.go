@@ -3,8 +3,10 @@
 
 package gircclient
 
-import "strings"
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // ClientCapabilities holds the capabilities that can and have been enabled on
 // a ServerConnection.
@@ -47,6 +49,9 @@ func (cc *ClientCapabilities) AddCaps(tags ...string) {
 	var value *string
 
 	for _, tag := range tags {
+		if len(tag) == 0 {
+			continue
+		}
 		if strings.Contains(tag, "=") {
 			vals := strings.SplitN(tag, "=", 2)
 			name = vals[0]
