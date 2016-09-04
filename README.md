@@ -4,8 +4,10 @@ This is a bunch of self-contained packages that help with IRC development in Go.
 
 ---
 
-[![GoDoc](https://godoc.org/github.com/DanielOaks/girc-go?status.svg)](https://godoc.org/github.com/DanielOaks/girc-go) [![Build Status](https://travis-ci.org/DanielOaks/girc-go.svg?branch=master)](https://travis-ci.org/DanielOaks/girc-go) [![Coverage Status](https://coveralls.io/repos/DanielOaks/girc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/DanielOaks/girc-go?branch=master) [![Go Report
-Card](https://goreportcard.com/badge/github.com/DanielOaks/girc-go)](https://goreportcard.com/report/github.com/DanielOaks/girc-go)
+[![GoDoc](https://godoc.org/github.com/DanielOaks/girc-go?status.svg)](https://godoc.org/github.com/DanielOaks/girc-go)
+[![Build Status](https://travis-ci.org/DanielOaks/girc-go.svg?branch=master)](https://travis-ci.org/DanielOaks/girc-go)
+[![Coverage Status](https://coveralls.io/repos/DanielOaks/girc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/DanielOaks/girc-go?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/DanielOaks/girc-go)](https://goreportcard.com/report/github.com/DanielOaks/girc-go)
 
 ---
 
@@ -18,7 +20,10 @@ An example bot that uses these packages can be found [here](https://gist.github.
 Packages:
 
 * [**gircclient**](https://godoc.org/github.com/DanielOaks/girc-go/client): Very work-in-progress client library.
-* [**eventmgr**](https://godoc.org/github.com/DanielOaks/girc-go/eventmgr): Event attaching and dispatching.
 * [**ircfmt**](https://godoc.org/github.com/DanielOaks/girc-go/ircfmt): IRC format codes handling, escaping and unescaping.
 * [**ircmap**](https://godoc.org/github.com/DanielOaks/girc-go/ircmap): IRC string casefolding.
 * [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
+
+---
+
+Also check out the eventmgr library [here](https://godoc.org/github.com/DanielOaks/eventmgr), which helps with event attaching and dispatching.
