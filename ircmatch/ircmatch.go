@@ -41,8 +41,6 @@ func MakeMatch(globTemplate string) Matcher {
 	newmatch.internalENFA.AddState(currentState+1, true)
 	newmatch.internalENFA.AddTransition(currentState, "", currentState+1)
 
-	newmatch.internalENFA.PrintTransitionTable()
-
 	return newmatch
 }
 
