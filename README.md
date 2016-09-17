@@ -22,6 +22,7 @@ Packages:
 * [**gircclient**](https://godoc.org/github.com/DanielOaks/girc-go/client): Very work-in-progress client library.
 * [**ircfmt**](https://godoc.org/github.com/DanielOaks/girc-go/ircfmt): IRC format codes handling, escaping and unescaping.
 * [**ircmap**](https://godoc.org/github.com/DanielOaks/girc-go/ircmap): IRC string casefolding.
+* [**ircmatch**](https://godoc.org/github.com/DanielOaks/girc-go/ircmatch): IRC string matching (mostly just a globbing engine).
 * [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
 
 ---
