@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+var (
+	// ErrorLineIsEmpty indicates that the given IRC line was empty.
+	ErrorLineIsEmpty = errors.New("Line is empty")
+)
+
 // IrcMessage represents an IRC message, as defined by the RFCs and as
 // extended by the IRCv3 Message Tags specification with the introduction
 // of message tags.
@@ -29,6 +34,10 @@ type IrcMessage struct {
 func ParseLine(line string) (IrcMessage, error) {
 	line = strings.Trim(line, "\r\n")
 	var ircmsg IrcMessage
+
+	if len(line) < 1 {
+		return ircmsg, ErrorLineIsEmpty
+	}
 
 	// tags
 	ircmsg.Tags = make(map[string]TagValue)
