@@ -43,6 +43,9 @@ func ParseLine(line string) (IrcMessage, error) {
 	ircmsg.Tags = make(map[string]TagValue)
 	if line[0] == '@' {
 		splitLine := strings.SplitN(line, " ", 2)
+		if len(splitLine) < 2 {
+			return ircmsg, ErrorLineIsEmpty
+		}
 		tags := splitLine[0][1:]
 		line = strings.TrimLeft(splitLine[1], " ")
 
@@ -70,6 +73,9 @@ func ParseLine(line string) (IrcMessage, error) {
 	// prefix
 	if line[0] == ':' {
 		splitLine := strings.SplitN(line, " ", 2)
+		if len(splitLine) < 2 {
+			return ircmsg, ErrorLineIsEmpty
+		}
 		ircmsg.Prefix = splitLine[0][1:]
 		line = strings.TrimLeft(splitLine[1], " ")
 	}
