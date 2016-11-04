@@ -63,11 +63,19 @@ func ParseLine(line string) (IrcMessage, error) {
 		}
 	}
 
+	if len(line) < 1 {
+		return ircmsg, ErrorLineIsEmpty
+	}
+
 	// prefix
 	if line[0] == ':' {
 		splitLine := strings.SplitN(line, " ", 2)
 		ircmsg.Prefix = splitLine[0][1:]
 		line = strings.TrimLeft(splitLine[1], " ")
+	}
+
+	if len(line) < 1 {
+		return ircmsg, ErrorLineIsEmpty
 	}
 
 	// command
