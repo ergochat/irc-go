@@ -155,9 +155,9 @@ func (ircmsg *IrcMessage) Line() (string, error) {
 	if len(ircmsg.Params) > 0 {
 		for i, param := range ircmsg.Params {
 			line += " "
-			if strings.Contains(param, " ") || len(param) < 1 {
+			if strings.Contains(param, " ") || strings.Contains(param, ":") || len(param) < 1 {
 				if i != len(ircmsg.Params)-1 {
-					return "", errors.New("irc: Cannot have a param with spaces or an empty param before the last parameter")
+					return "", errors.New("irc: Cannot have a param with spaces / colon or an empty param before the last parameter")
 				}
 				line += ":"
 			}
