@@ -32,6 +32,24 @@ type IrcMessage struct {
 //   incoming last empty parameters whether they are trailing or ordinary
 //   parameters. However, we do follow that rule when emitting lines.
 func ParseLine(line string) (IrcMessage, error) {
+	return parseLine(line, 0, false)
+}
+
+// ParseLineMaxLen creates and returns an IrcMessage from the given IRC line,
+// taking the maximum length into account and truncating the message as appropriate.
+//
+// Quirks:
+//
+//   The RFCs say that last parameters with no characters MUST be a trailing.
+//   IE, they need to be prefixed with ":". We disagree with that and handle
+//   incoming last empty parameters whether they are trailing or ordinary
+//   parameters. However, we do follow that rule when emitting lines.
+func ParseLineMaxLen(line string, maxlen int) (IrcMessage, error) {
+	return parseLine(line, maxlen, true)
+}
+
+// parseLine does the actual line parsing for the above user-facing functions.
+func parseLine(line string, maxlen int, useMaxLen bool) (IrcMessage, error) {
 	line = strings.Trim(line, "\r\n")
 	var ircmsg IrcMessage
 
@@ -48,6 +66,15 @@ func ParseLine(line string) (IrcMessage, error) {
 		}
 		tags := splitLine[0][1:]
 		line = strings.TrimLeft(splitLine[1], " ")
+
+		if len(line) < 1 {
+			return ircmsg, ErrorLineIsEmpty
+		}
+
+		// truncate if desired
+		if useMaxLen && len(tags) > maxlen {
+			tags = tags[:maxlen]
+		}
 
 		for _, fulltag := range strings.Split(tags, ";") {
 			var name string
@@ -66,8 +93,9 @@ func ParseLine(line string) (IrcMessage, error) {
 		}
 	}
 
-	if len(line) < 1 {
-		return ircmsg, ErrorLineIsEmpty
+	// truncate if desired
+	if useMaxLen && len(line) > maxlen {
+		line = line[:maxlen]
 	}
 
 	// prefix
@@ -86,6 +114,9 @@ func ParseLine(line string) (IrcMessage, error) {
 
 	// command
 	splitLine := strings.SplitN(line, " ", 2)
+	if len(splitLine[0]) == 0 {
+		return ircmsg, ErrorLineIsEmpty
+	}
 	ircmsg.Command = strings.ToUpper(splitLine[0])
 	if len(splitLine) > 1 {
 		line = strings.TrimLeft(splitLine[1], " ")
@@ -133,53 +164,74 @@ func MakeMessage(tags *map[string]TagValue, prefix string, command string, param
 
 // Line returns a sendable line created from an IrcMessage.
 func (ircmsg *IrcMessage) Line() (string, error) {
-	var line string
+	return ircmsg.line(0, false)
+}
+
+// LineMaxLen returns a sendable line created from an IrcMessage, limited by maxlen.
+func (ircmsg *IrcMessage) LineMaxLen(maxlen int) (string, error) {
+	return ircmsg.line(maxlen, true)
+}
+
+// line returns a sendable line created from an IrcMessage.
+func (ircmsg *IrcMessage) line(maxlen int, useMaxLen bool) (string, error) {
+	var tags, rest, line string
 
 	if len(ircmsg.Command) < 1 {
 		return "", errors.New("irc: IRC messages MUST have a command")
 	}
 
 	if len(ircmsg.Tags) > 0 {
-		line += "@"
+		tags += "@"
 
 		for tag, val := range ircmsg.Tags {
-			line += tag
+			tags += tag
 
 			if val.HasValue {
-				line += "="
-				line += EscapeTagValue(val.Value)
+				tags += "="
+				tags += EscapeTagValue(val.Value)
 			}
 
-			line += ";"
+			tags += ";"
 		}
 		// TODO: this is ugly, but it works for now
-		line = strings.TrimSuffix(line, ";")
+		tags = strings.TrimSuffix(tags, ";")
 
-		line += " "
+		// truncate if desired
+		if useMaxLen && len(tags) > maxlen {
+			tags = tags[:maxlen]
+		}
+
+		tags += " "
 	}
 
 	if len(ircmsg.Prefix) > 0 {
-		line += ":"
-		line += ircmsg.Prefix
-		line += " "
+		rest += ":"
+		rest += ircmsg.Prefix
+		rest += " "
 	}
 
-	line += ircmsg.Command
+	rest += ircmsg.Command
 
 	if len(ircmsg.Params) > 0 {
 		for i, param := range ircmsg.Params {
-			line += " "
+			rest += " "
 			if strings.Contains(param, " ") || strings.Contains(param, ":") || len(param) < 1 {
 				if i != len(ircmsg.Params)-1 {
 					return "", errors.New("irc: Cannot have a param with spaces / colon or an empty param before the last parameter")
 				}
-				line += ":"
+				rest += ":"
 			}
-			line += param
+			rest += param
 		}
 	}
 
-	line += "\r\n"
+	// truncate if desired
+	// -2 for \r\n
+	if useMaxLen && len(rest) > maxlen-2 {
+		rest = rest[:maxlen-2]
+	}
+
+	line = tags + rest + "\r\n"
 
 	return line, nil
 }
