@@ -131,7 +131,9 @@ func parseLine(line string, maxlen int, useMaxLen bool) (IrcMessage, error) {
 
 			// regular params
 			splitLine := strings.SplitN(line, " ", 2)
-			ircmsg.Params = append(ircmsg.Params, splitLine[0])
+			if len(splitLine[0]) > 0 {
+				ircmsg.Params = append(ircmsg.Params, splitLine[0])
+			}
 
 			if len(splitLine) > 1 {
 				line = strings.TrimLeft(splitLine[1], " ")

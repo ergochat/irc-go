@@ -43,7 +43,7 @@ var decodetests = []testcode{
 	{":dan- TESTMSG\r\n",
 		MakeMessage(nil, "dan-", "TESTMSG")},
 	{":dan- TESTMSG dan \r\n",
-		MakeMessage(nil, "dan-", "TESTMSG", "dan", "")},
+		MakeMessage(nil, "dan-", "TESTMSG", "dan")},
 }
 var decodetesterrors = []string{
 	"\r\n",
