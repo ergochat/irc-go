@@ -24,6 +24,7 @@ Packages:
 * [**ircmap**](https://godoc.org/github.com/DanielOaks/girc-go/ircmap): IRC string casefolding.
 * [**ircmatch**](https://godoc.org/github.com/DanielOaks/girc-go/ircmatch): IRC string matching (mostly just a globbing engine).
 * [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
+* [**ircutils**](https://godoc.org/github.com/DanielOaks/girc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
 
 ---
 
