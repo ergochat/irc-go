@@ -38,6 +38,8 @@ var decodelentests = []testcodewithlen{
 var decodetests = []testcode{
 	{":dan-!d@localhost PRIVMSG dan #test :What a cool message\r\n",
 		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
+	{"@time=12732;re TEST *a asda:fs :fhye tegh\r\n",
+		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*a", "asda:fs", "fhye tegh")},
 	{"@time=12732;re TEST *\r\n",
 		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*")},
 	{":dan- TESTMSG\r\n",
@@ -102,6 +104,8 @@ func TestDecode(t *testing.T) {
 var encodetests = []testcode{
 	{":dan-!d@localhost PRIVMSG dan #test :What a cool message\r\n",
 		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
+	{"@time=12732;re TEST *a asda:fs :fhye tegh\r\n",
+		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*a", "asda:fs", "fhye tegh")},
 	{"@time=12732 TEST *\r\n",
 		MakeMessage(MakeTags("time", "12732"), "", "TEST", "*")},
 	{"@re TEST *\r\n",
