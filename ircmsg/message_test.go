@@ -58,7 +58,7 @@ var decodetesterrors = []string{
 
 func TestDecode(t *testing.T) {
 	for _, pair := range decodelentests {
-		ircmsg, err := ParseLineMaxLen(pair.raw, pair.length)
+		ircmsg, err := ParseLineMaxLen(pair.raw, pair.length, pair.length)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -104,8 +104,8 @@ func TestDecode(t *testing.T) {
 var encodetests = []testcode{
 	{":dan-!d@localhost PRIVMSG dan #test :What a cool message\r\n",
 		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
-	{"@time=12732;re TEST *a asda:fs :fhye tegh\r\n",
-		MakeMessage(MakeTags("time", "12732", "re", nil), "", "TEST", "*a", "asda:fs", "fhye tegh")},
+	{"@time=12732 TEST *a asda:fs :fhye tegh\r\n",
+		MakeMessage(MakeTags("time", "12732"), "", "TEST", "*a", "asda:fs", "fhye tegh")},
 	{"@time=12732 TEST *\r\n",
 		MakeMessage(MakeTags("time", "12732"), "", "TEST", "*")},
 	{"@re TEST *\r\n",
@@ -139,7 +139,7 @@ func TestEncode(t *testing.T) {
 		}
 	}
 	for _, pair := range encodelentests {
-		line, err := pair.message.LineMaxLen(pair.length)
+		line, err := pair.message.LineMaxLen(pair.length, pair.length)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,

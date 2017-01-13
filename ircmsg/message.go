@@ -32,7 +32,7 @@ type IrcMessage struct {
 //   incoming last empty parameters whether they are trailing or ordinary
 //   parameters. However, we do follow that rule when emitting lines.
 func ParseLine(line string) (IrcMessage, error) {
-	return parseLine(line, 0, false)
+	return parseLine(line, 0, 0, false)
 }
 
 // ParseLineMaxLen creates and returns an IrcMessage from the given IRC line,
@@ -44,12 +44,12 @@ func ParseLine(line string) (IrcMessage, error) {
 //   IE, they need to be prefixed with ":". We disagree with that and handle
 //   incoming last empty parameters whether they are trailing or ordinary
 //   parameters. However, we do follow that rule when emitting lines.
-func ParseLineMaxLen(line string, maxlen int) (IrcMessage, error) {
-	return parseLine(line, maxlen, true)
+func ParseLineMaxLen(line string, maxlenTags, maxlenRest int) (IrcMessage, error) {
+	return parseLine(line, maxlenTags, maxlenRest, true)
 }
 
 // parseLine does the actual line parsing for the above user-facing functions.
-func parseLine(line string, maxlen int, useMaxLen bool) (IrcMessage, error) {
+func parseLine(line string, maxlenTags, maxlenRest int, useMaxLen bool) (IrcMessage, error) {
 	line = strings.Trim(line, "\r\n")
 	var ircmsg IrcMessage
 
@@ -72,8 +72,8 @@ func parseLine(line string, maxlen int, useMaxLen bool) (IrcMessage, error) {
 		}
 
 		// truncate if desired
-		if useMaxLen && len(tags) > maxlen {
-			tags = tags[:maxlen]
+		if useMaxLen && len(tags) > maxlenTags {
+			tags = tags[:maxlenTags]
 		}
 
 		for _, fulltag := range strings.Split(tags, ";") {
@@ -94,8 +94,8 @@ func parseLine(line string, maxlen int, useMaxLen bool) (IrcMessage, error) {
 	}
 
 	// truncate if desired
-	if useMaxLen && len(line) > maxlen {
-		line = line[:maxlen]
+	if useMaxLen && len(line) > maxlenRest {
+		line = line[:maxlenRest]
 	}
 
 	// prefix
@@ -166,16 +166,16 @@ func MakeMessage(tags *map[string]TagValue, prefix string, command string, param
 
 // Line returns a sendable line created from an IrcMessage.
 func (ircmsg *IrcMessage) Line() (string, error) {
-	return ircmsg.line(0, false)
+	return ircmsg.line(0, 0, false)
 }
 
 // LineMaxLen returns a sendable line created from an IrcMessage, limited by maxlen.
-func (ircmsg *IrcMessage) LineMaxLen(maxlen int) (string, error) {
-	return ircmsg.line(maxlen, true)
+func (ircmsg *IrcMessage) LineMaxLen(maxlenTags, maxlenRest int) (string, error) {
+	return ircmsg.line(maxlenTags, maxlenRest, true)
 }
 
 // line returns a sendable line created from an IrcMessage.
-func (ircmsg *IrcMessage) line(maxlen int, useMaxLen bool) (string, error) {
+func (ircmsg *IrcMessage) line(maxlenTags, maxlenRest int, useMaxLen bool) (string, error) {
 	var tags, rest, line string
 
 	if len(ircmsg.Command) < 1 {
@@ -199,8 +199,8 @@ func (ircmsg *IrcMessage) line(maxlen int, useMaxLen bool) (string, error) {
 		tags = strings.TrimSuffix(tags, ";")
 
 		// truncate if desired
-		if useMaxLen && len(tags) > maxlen {
-			tags = tags[:maxlen]
+		if useMaxLen && len(tags) > maxlenTags {
+			tags = tags[:maxlenTags]
 		}
 
 		tags += " "
@@ -229,8 +229,8 @@ func (ircmsg *IrcMessage) line(maxlen int, useMaxLen bool) (string, error) {
 
 	// truncate if desired
 	// -2 for \r\n
-	if useMaxLen && len(rest) > maxlen-2 {
-		rest = rest[:maxlen-2]
+	if useMaxLen && len(rest) > maxlenRest-2 {
+		rest = rest[:maxlenRest-2]
 	}
 
 	line = tags + rest + "\r\n"
