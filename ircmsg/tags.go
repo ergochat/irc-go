@@ -43,6 +43,9 @@ func UnescapeTagValue(in string) string {
 				out += string(in[1])
 			}
 			in = in[2:]
+		} else if in[0] == '\\' {
+			// trailing slash
+			in = in[1:]
 		} else {
 			out += string(in[0])
 			in = in[1:]
