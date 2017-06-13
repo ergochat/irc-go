@@ -6,6 +6,8 @@ package ircmap
 import (
 	"strings"
 
+	"golang.org/x/text/secure/precis"
+
 	"github.com/DanielOaks/go-idn/idna2003/stringprep"
 )
 
@@ -22,9 +24,12 @@ const (
 	// RFC1459 represents the casemapping defined by "rfc1459"
 	RFC1459
 
-	// RFC3454 represents the UTF-8 nameprep casefolding as used by mammon-ircd
-	// and specified by ircv3-harmony.
+	// RFC3454 represents the UTF-8 nameprep casefolding as used by mammon-ircd.
 	RFC3454
+
+	// RFC7613 represents the UTF-8 casefolding currently being drafted by me
+	// with the IRCv3 WG.
+	RFC7613
 )
 
 var (
@@ -33,6 +38,7 @@ var (
 		"ascii":   ASCII,
 		"rfc1459": RFC1459,
 		"rfc3454": RFC3454,
+		"rfc7613": RFC7613,
 	}
 )
 
@@ -62,6 +68,8 @@ func Casefold(mapping MappingType, input string) (string, error) {
 		}
 	} else if mapping == RFC3454 {
 		out, err = stringprep.Nameprep(input)
+	} else if mapping == RFC7613 {
+		out, err = precis.UsernameCaseMapped.CompareKey(input)
 	}
 
 	return out, err
