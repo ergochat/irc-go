@@ -1,6 +1,6 @@
 package ircmatch
 
-import "github.com/DanielOaks/e-nfa"
+import "github.com/oragono/e-nfa"
 
 // Matcher represents an object that can match IRC strings.
 type Matcher struct {
