@@ -3,7 +3,7 @@
 
 package gircclient
 
-import "github.com/DanielOaks/eventmgr"
+import "github.com/goshuirc/eventmgr"
 
 // eventRegistration holds events that have not yet been registered.
 type eventRegistration struct {

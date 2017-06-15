@@ -4,8 +4,8 @@
 package gircclient
 
 import (
-	"github.com/DanielOaks/girc-go/ircfmt"
-	"github.com/DanielOaks/girc-go/ircmsg"
+	"github.com/goshuirc/irc-go/ircfmt"
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 // Msg sends a message to the given target.

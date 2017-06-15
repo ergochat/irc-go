@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/DanielOaks/eventmgr"
-	"github.com/DanielOaks/girc-go/ircmap"
+	"github.com/goshuirc/eventmgr"
+	"github.com/goshuirc/irc-go/ircmap"
 )
 
 // welcomeHandler sets the nick to the first parameter of the 001 message.

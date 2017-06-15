@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/DanielOaks/eventmgr"
+	"github.com/goshuirc/eventmgr"
 )
 
 // EventTransforms holds the set of event transformations we apply when

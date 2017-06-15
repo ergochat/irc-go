@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanielOaks/eventmgr"
-	"github.com/DanielOaks/girc-go/ircmap"
-	"github.com/DanielOaks/girc-go/ircmsg"
+	"github.com/goshuirc/eventmgr"
+	"github.com/goshuirc/irc-go/ircmap"
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 // ServerConnection is a connection to a single server.

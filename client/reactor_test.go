@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanielOaks/girc-go/ircmap"
-	"github.com/DanielOaks/girc-go/ircmsg"
+	"github.com/goshuirc/irc-go/ircmap"
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 func TestPlainConnection(t *testing.T) {
