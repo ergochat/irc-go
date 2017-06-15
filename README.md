@@ -1,13 +1,13 @@
-# gIRC-Go
+# GoshuIRC-Go
 
-This is a bunch of self-contained packages that help with IRC development in Go. The package splits themselves are fairly similar to how things are split up in the [original Python version](https://github.com/DanielOaks/girc).
+This is a bunch of self-contained packages that help with IRC development in Go. The package splits themselves are fairly similar to how things are split up in the [original Python version](https://github.com/goshuirc/irc).
 
 ---
 
-[![GoDoc](https://godoc.org/github.com/DanielOaks/girc-go?status.svg)](https://godoc.org/github.com/DanielOaks/girc-go)
-[![Build Status](https://travis-ci.org/DanielOaks/girc-go.svg?branch=master)](https://travis-ci.org/DanielOaks/girc-go)
-[![Coverage Status](https://coveralls.io/repos/DanielOaks/girc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/DanielOaks/girc-go?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/DanielOaks/girc-go)](https://goreportcard.com/report/github.com/DanielOaks/girc-go)
+[![GoDoc](https://godoc.org/github.com/goshuirc/irc-go?status.svg)](https://godoc.org/github.com/goshuirc/irc-go)
+[![Build Status](https://travis-ci.org/goshuirc/irc-go.svg?branch=master)](https://travis-ci.org/goshuirc/irc-go)
+[![Coverage Status](https://coveralls.io/repos/goshuirc/irc-go/badge.svg?branch=master&service=github)](https://coveralls.io/github/goshuirc/irc-go?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/goshuirc/irc-go)](https://goreportcard.com/report/github.com/goshuirc/irc-go)
 
 ---
 
@@ -19,13 +19,13 @@ An example bot that uses these packages can be found [here](https://gist.github.
 
 Packages:
 
-* [**gircclient**](https://godoc.org/github.com/DanielOaks/girc-go/client): Very work-in-progress client library.
-* [**ircfmt**](https://godoc.org/github.com/DanielOaks/girc-go/ircfmt): IRC format codes handling, escaping and unescaping.
-* [**ircmap**](https://godoc.org/github.com/DanielOaks/girc-go/ircmap): IRC string casefolding.
-* [**ircmatch**](https://godoc.org/github.com/DanielOaks/girc-go/ircmatch): IRC string matching (mostly just a globbing engine).
-* [**ircmsg**](https://godoc.org/github.com/DanielOaks/girc-go/ircmsg): IRC message handling, raw line parsing and creation.
-* [**ircutils**](https://godoc.org/github.com/DanielOaks/girc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
+* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Very work-in-progress client library.
+* [**ircfmt**](https://godoc.org/github.com/goshuirc/irc-go/ircfmt): IRC format codes handling, escaping and unescaping.
+* [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
+* [**ircmatch**](https://godoc.org/github.com/goshuirc/irc-go/ircmatch): IRC string matching (mostly just a globbing engine).
+* [**ircmsg**](https://godoc.org/github.com/goshuirc/irc-go/ircmsg): IRC message handling, raw line parsing and creation.
+* [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
 
 ---
 
-Also check out the eventmgr library [here](https://godoc.org/github.com/DanielOaks/eventmgr), which helps with event attaching and dispatching.
+Also check out the eventmgr library [here](https://godoc.org/github.com/goshuirc/eventmgr), which helps with event attaching and dispatching.
