@@ -19,6 +19,16 @@ func welcomeHandler(event string, info eventmgr.InfoMap) {
 	sc.Nick = info["params"].([]string)[0]
 
 	sc.Registered = true
+
+	// join channels if we have any to join
+	for _, channel := range sc.channelsToJoin {
+		params := []string{channel.Name}
+		if channel.UseKey {
+			params = []string{channel.Name, channel.Key}
+		}
+		sc.Send(nil, "", "JOIN", params...)
+	}
+	sc.channelsToJoin = []channel{} // empty array
 }
 
 func featuresHandler(event string, info eventmgr.InfoMap) {

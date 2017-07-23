@@ -26,9 +26,10 @@ type ServerConnection struct {
 	Casemapping ircmap.MappingType
 
 	// internal stuff
-	RawConnection net.Conn
-	eventsIn      eventmgr.EventManager
-	eventsOut     eventmgr.EventManager
+	RawConnection  net.Conn
+	eventsIn       eventmgr.EventManager
+	eventsOut      eventmgr.EventManager
+	channelsToJoin []channel
 
 	// data we keep track of
 	Features ServerFeatures
@@ -93,6 +94,23 @@ func (sc *ServerConnection) Connect(address string, ssl bool, tlsconfig *tls.Con
 	sc.Send(nil, "", "CAP", "LS", "302")
 
 	return nil
+}
+
+// JoinChannel joins a channel, or marks the channel as to be joined after registration.
+func (sc *ServerConnection) JoinChannel(name string, key string, useKey bool) {
+	if sc.Registered {
+		params := []string{name}
+		if useKey {
+			params = []string{name, key}
+		}
+		sc.Send(nil, "", "JOIN", params...)
+	} else {
+		sc.channelsToJoin = append(sc.channelsToJoin, channel{
+			Name:   name,
+			Key:    key,
+			UseKey: useKey,
+		})
+	}
 }
 
 // WaitForConnection waits for the serverConnection to become available.
