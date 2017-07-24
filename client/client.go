@@ -237,8 +237,8 @@ func (sc *ServerConnection) Casefold(message string) (string, error) {
 // Send sends an IRC message to the server. If the message cannot be converted
 // to a raw IRC line, an error is returned.
 func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) error {
-	ircmsg := ircmsg.MakeMessage(tags, prefix, command, params...)
-	line, err := ircmsg.Line()
+	msg := ircmsg.MakeMessage(tags, prefix, command, params...)
+	line, err := msg.Line()
 	if err != nil {
 		return err
 	}
@@ -251,11 +251,18 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 	info["data"] = line
 	sc.dispatchRawOut(info)
 
+	var outTags map[string]ircmsg.TagValue
+	if tags == nil {
+		outTags = *ircmsg.MakeTags()
+	} else {
+		outTags = *tags
+	}
+
 	// dispatch real event
 	info = eventmgr.NewInfoMap()
 	info["server"] = sc
 	info["direction"] = "out"
-	info["tags"] = tags
+	info["tags"] = outTags
 	info["prefix"] = prefix
 	info["command"] = command
 	info["params"] = params
@@ -286,4 +293,10 @@ func (sc *ServerConnection) dispatchRawOut(info eventmgr.InfoMap) {
 func (sc *ServerConnection) dispatchOut(name string, info eventmgr.InfoMap) {
 	sc.eventsOut.Dispatch(name, info)
 	sc.eventsOut.Dispatch("all", info)
+}
+
+// IsChannel returns true if the given target is a channel.
+func (sc *ServerConnection) IsChannel(target string) bool {
+	channelChars := sc.Features["CHANTYPES"].(string)
+	return strings.ContainsAny(string(target[0]), channelChars)
 }
