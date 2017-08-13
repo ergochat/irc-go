@@ -116,7 +116,7 @@ func (sc *ServerConnection) JoinChannel(name string, key string, useKey bool) {
 // WaitForConnection waits for the serverConnection to become available.
 // This is used when writing a custom event loop.
 func (sc *ServerConnection) WaitForConnection() {
-	waitTime, _ := time.ParseDuration("10ms")
+	waitTime := 10 * time.Millisecond
 	for sc.RawConnection == nil {
 		time.Sleep(waitTime)
 	}

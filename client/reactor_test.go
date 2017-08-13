@@ -72,10 +72,8 @@ func TestTLSConnection(t *testing.T) {
 	// generate a test certificate to use
 	priv, _ := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 
-	duration30Days, _ := time.ParseDuration("-30h")
-	notBefore := time.Now().Add(duration30Days) // valid 30 hours ago
-	duration1Year, _ := time.ParseDuration("90h")
-	notAfter := notBefore.Add(duration1Year) // for 90 hours
+	notBefore := time.Now().Add(-1 * time.Hour * 30) // valid 30 hours ago
+	notAfter := notBefore.Add(time.Hour * 90)        // for 90 hours
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
@@ -135,8 +133,7 @@ func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string,
 	// need to wait for a quick moment here for TLS to process any changes this
 	// message has caused
 	runtime.Gosched()
-	waitTime, _ := time.ParseDuration("10ms")
-	time.Sleep(waitTime)
+	time.Sleep(10 * time.Millisecond)
 }
 
 func initialiseServerConnection(client *ServerConnection) {
