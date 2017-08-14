@@ -21,6 +21,8 @@ type IrcMessage struct {
 	Prefix  string
 	Command string
 	Params  []string
+	// SourceLine represents the original line that constructed this message, when created from ParseLine.
+	SourceLine string
 }
 
 // ParseLine creates and returns an IrcMessage from the given IRC line.
@@ -52,6 +54,8 @@ func ParseLineMaxLen(line string, maxlenTags, maxlenRest int) (IrcMessage, error
 func parseLine(line string, maxlenTags, maxlenRest int, useMaxLen bool) (IrcMessage, error) {
 	line = strings.Trim(line, "\r\n")
 	var ircmsg IrcMessage
+
+	ircmsg.SourceLine = line
 
 	if len(line) < 1 {
 		return ircmsg, ErrorLineIsEmpty
