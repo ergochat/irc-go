@@ -2,6 +2,7 @@ package ircmsg
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,9 @@ func TestDecode(t *testing.T) {
 			)
 		}
 
+		// short-circuit sourceline so tests work
+		pair.message.SourceLine = strings.TrimRight(pair.raw, "\r\n")
+
 		if !reflect.DeepEqual(ircmsg, pair.message) {
 			t.Error(
 				"For", pair.raw,
@@ -82,6 +86,9 @@ func TestDecode(t *testing.T) {
 				"Failed to parse line:", err,
 			)
 		}
+
+		// short-circuit sourceline so tests work
+		pair.message.SourceLine = strings.TrimRight(pair.raw, "\r\n")
 
 		if !reflect.DeepEqual(ircmsg, pair.message) {
 			t.Error(
