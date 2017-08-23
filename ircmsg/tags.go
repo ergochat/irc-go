@@ -103,3 +103,46 @@ func MakeTags(values ...interface{}) *map[string]TagValue {
 
 	return &tags
 }
+
+// ParseTags takes a tag string such as "network=freenode;buffer=#chan;joined=1;topic=some\stopic" and outputs a TagValue map.
+func ParseTags(tags string) (map[string]TagValue, error) {
+	return parseTags(tags, 0, false)
+}
+
+// parseTags does the actual tags parsing for the above user-facing function.
+func parseTags(tags string, maxlenTags int, useMaxLen bool) (map[string]TagValue, error) {
+	tagMap := make(map[string]TagValue)
+
+	// confirm no bad strings exist
+	if strings.ContainsAny(tags, " \r\n") {
+		return tagMap, ErrorTagsContainsBadChar
+	}
+
+	// truncate if desired
+	if useMaxLen && len(tags) > maxlenTags {
+		tags = tags[:maxlenTags]
+	}
+
+	for _, fulltag := range strings.Split(tags, ";") {
+		// skip empty tag string values
+		if len(fulltag) < 1 {
+			continue
+		}
+
+		var name string
+		var val TagValue
+		if strings.Contains(fulltag, "=") {
+			val.HasValue = true
+			splittag := strings.SplitN(fulltag, "=", 2)
+			name = splittag[0]
+			val.Value = UnescapeTagValue(splittag[1])
+		} else {
+			name = fulltag
+			val.HasValue = false
+		}
+
+		tagMap[name] = val
+	}
+
+	return tagMap, nil
+}

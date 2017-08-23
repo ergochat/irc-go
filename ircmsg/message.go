@@ -11,6 +11,8 @@ import (
 var (
 	// ErrorLineIsEmpty indicates that the given IRC line was empty.
 	ErrorLineIsEmpty = errors.New("Line is empty")
+	// ErrorTagsContainsBadChar indicates that the passed tag string contains a space or newline.
+	ErrorTagsContainsBadChar = errors.New("Tag string contains bad character (such as a space or newline)")
 )
 
 // IrcMessage represents an IRC message, as defined by the RFCs and as
@@ -75,25 +77,10 @@ func parseLine(line string, maxlenTags, maxlenRest int, useMaxLen bool) (IrcMess
 			return ircmsg, ErrorLineIsEmpty
 		}
 
-		// truncate if desired
-		if useMaxLen && len(tags) > maxlenTags {
-			tags = tags[:maxlenTags]
-		}
-
-		for _, fulltag := range strings.Split(tags, ";") {
-			var name string
-			var val TagValue
-			if strings.Contains(fulltag, "=") {
-				val.HasValue = true
-				splittag := strings.SplitN(fulltag, "=", 2)
-				name = splittag[0]
-				val.Value = UnescapeTagValue(splittag[1])
-			} else {
-				name = fulltag
-				val.HasValue = false
-			}
-
-			ircmsg.Tags[name] = val
+		var err error
+		ircmsg.Tags, err = parseTags(tags, maxlenTags, useMaxLen)
+		if err != nil {
+			return ircmsg, err
 		}
 	}
 
