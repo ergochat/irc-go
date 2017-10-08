@@ -3,7 +3,9 @@
 
 package ircfmt
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// raw bytes and strings to do replacing with
@@ -13,7 +15,7 @@ const (
 	underline string = "\x1f"
 	reset     string = "\x0f"
 
-	bytecolour byte = '\x03'
+	runecolour rune = '\x03'
 
 	// valid characters for an initial colour code, for speed
 	colours1 string = "0123456789"
@@ -112,32 +114,44 @@ func Escape(in string) string {
 
 	// replace colour codes
 	out := ""
-	for len(in) > 0 {
-		if in[0] == bytecolour {
-			out += "$c"
-			in = in[1:]
+	var skip int
+	for i, x := range in {
+		// skip chars if necessary
+		if 0 < skip {
+			skip--
+			continue
+		}
 
-			if len(in) < 1 || !strings.Contains(colours1, string(in[0])) {
+		if x == runecolour {
+			out += "$c"
+			i++ // to refer to color code
+
+			if len(in) < i+2 || !strings.Contains(colours1, string(in[i])) {
 				out += "[]"
 				continue
 			}
 
 			out += "["
 
+			in = in[i:]
 			for _, vals := range numtocolour {
 				code, name := vals[0], vals[1]
 				if strings.HasPrefix(in, code) {
 					in = strings.TrimPrefix(in, code)
 					out += name
+					i = 0 // refer to char after colour code
+					skip += len(code)
 
-					if len(in) > 1 && in[0] == ',' {
-						searchin := in[1:]
+					if i+2 < len(in) && in[i] == ',' {
+						i++ // refer to colour code after comma
+						skip++
+						in := in[i:]
 						for _, vals = range numtocolour {
 							code, name = vals[0], vals[1]
-							if strings.HasPrefix(searchin, code) {
+							if strings.HasPrefix(in, code) {
 								out += ","
 								out += name
-								in = strings.TrimPrefix(in[1:], code)
+								skip += len(code)
 								break
 							}
 						}
@@ -148,8 +162,7 @@ func Escape(in string) string {
 
 			out += "]"
 		} else {
-			out += string(in[0])
-			in = in[1:]
+			out += string(x)
 		}
 	}
 
@@ -163,51 +176,80 @@ func Escape(in string) string {
 func Unescape(in string) string {
 	out := ""
 
-	for len(in) > 0 {
-		if in[0] == '$' && len(in) > 1 {
-			val, exists := escapetoval[in[1]]
+	var skip int
+	for i, x := range in {
+		// skip if necessary
+		if 0 < skip {
+			skip--
+			continue
+		}
+
+		// chars exist and formatting code thrown our way
+		i++ // to now refer to the formatting code character
+		if x == '$' && 0 < len(in)-i {
+			val, exists := escapetoval[in[i]]
 			if exists == true {
-				out += string(val)
-				in = in[2:]
-			} else if in[1] == 'c' {
+				skip++ // to skip the formatting code character
+				out += val
+			} else if in[i] == 'c' {
+				skip++ // to skip the formatting code character
 				out += colour
 
-				in = in[2:]
-
 				// ensure '[' follows before doing further processing
-				if len(in) < 1 || in[0] != '[' {
+				i++ // refer to the opening bracket
+				if (len(in)-i) < 1 || in[i] != '[' {
 					continue
 				} else {
 					// strip leading '['
-					in = in[1:]
+					skip++
 				}
 
-				splitin := strings.SplitN(in, "]", 2)
-				colournames := strings.Split(splitin[0], ",")
-				in = splitin[1]
+				var buffer string
+				var colournames []string
+				for j, y := range in {
+					// get to color names and all
+					if j <= i {
+						continue
+					}
+
+					// skip this character in the real loop as well
+					skip++
+					// so we can refer to the char after the loop as well
+					i = j
+
+					// record color names
+					if y == ']' {
+						i++
+						break
+					} else if y == ',' {
+						colournames = append(colournames, buffer)
+						buffer = ""
+					} else {
+						buffer += string(y)
+					}
+				}
+				colournames = append(colournames, buffer)
 
 				if len(colournames) > 1 {
 					out += colourcodesTruncated[colournames[0]]
 					out += ","
-					if len(in) > 0 && strings.Contains(colours1, string(in[0])) {
+					if i < len(in) && strings.Contains(colours1, string(in[i])) {
 						out += colourcodesFull[colournames[1]]
 					} else {
 						out += colourcodesTruncated[colournames[1]]
 					}
 				} else {
-					if len(in) > 0 && strings.Contains(colours1, string(in[0])) {
+					if i < len(in) && strings.Contains(colours1, string(in[i])) {
 						out += colourcodesFull[colournames[0]]
 					} else {
 						out += colourcodesTruncated[colournames[0]]
 					}
 				}
 			} else {
-				out += string(in[1])
-				in = in[2:]
+				// unknown formatting character, intentionally fall-through
 			}
 		} else {
-			out += string(in[0])
-			in = in[1:]
+			out += string(x)
 		}
 	}
 

@@ -13,6 +13,7 @@ var tests = []testcase{
 	{"te$c[red,green]st", "te\x034,3st"},
 	{"te$c[green]4st", "te\x03034st"},
 	{"te$c[red,green]9st", "te\x034,039st"},
+	{" ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪", " ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪"},
 }
 
 var escapetests = []testcase{
