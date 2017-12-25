@@ -16,16 +16,18 @@ and such.
 The escape character we use in this library is the dollar sign ("$"), along
 with the given escape characters:
 
-	----------------------------
-	 Name       | Escape | Raw
-	----------------------------
-	 Dollarsign |   $$   |  $
-	 Bold       |   $b   | 0x02
-	 Colour     |   $c   | 0x03
-	 Italic     |   $i   | 0x1d
-	 Underscore |   $u   | 0x1f
-	 Reset      |   $r   | 0x0f
-	----------------------------
+	-------------------------------
+	 Name          | Escape | Raw
+	-------------------------------
+	 Dollarsign    |   $$   |  $
+	 Bold          |   $b   | 0x02
+	 Colour        |   $c   | 0x03
+	 Monospace     |   $m   | 0x11
+	 Italic        |   $i   | 0x1d
+	 Strikethrough |   $s   | 0x1e
+	 Underscore    |   $u   | 0x1f
+	 Reset         |   $r   | 0x0f
+	-------------------------------
 
 Colours are escaped in a slightly different way, using the actual names of them
 rather than just the raw numbers.
@@ -74,6 +76,10 @@ Here are the colour names and codes we recognise:
 	  13  | pink
 	  14  | grey
 	  15  | light grey
+	  99  | default
 	--------------------
+
+These other colours aren't given names:
+https://modern.ircdocs.horse/formatting.html#colors-16-98
 */
 package ircfmt
