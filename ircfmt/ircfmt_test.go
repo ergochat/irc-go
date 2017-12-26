@@ -22,7 +22,8 @@ var escapetests = []testcase{
 }
 
 var unescapetests = []testcase{
-	{"te$st", "test"},
+	{"te$xt", "text"},
+	{"te$st", "te\x1et"},
 	{"test$c", "test\x03"},
 }
 
