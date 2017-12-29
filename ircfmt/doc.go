@@ -16,18 +16,19 @@ and such.
 The escape character we use in this library is the dollar sign ("$"), along
 with the given escape characters:
 
-	-------------------------------
-	 Name          | Escape | Raw
-	-------------------------------
-	 Dollarsign    |   $$   |  $
-	 Bold          |   $b   | 0x02
-	 Colour        |   $c   | 0x03
-	 Monospace     |   $m   | 0x11
-	 Italic        |   $i   | 0x1d
-	 Strikethrough |   $s   | 0x1e
-	 Underscore    |   $u   | 0x1f
-	 Reset         |   $r   | 0x0f
-	-------------------------------
+	--------------------------------
+	 Name           | Escape | Raw
+	--------------------------------
+	 Dollarsign     |   $$   |  $
+	 Bold           |   $b   | 0x02
+	 Colour         |   $c   | 0x03
+	 Monospace      |   $m   | 0x11
+	 Reverse Colour |   $v   | 0x16
+	 Italic         |   $i   | 0x1d
+	 Strikethrough  |   $s   | 0x1e
+	 Underscore     |   $u   | 0x1f
+	 Reset          |   $r   | 0x0f
+	--------------------------------
 
 Colours are escaped in a slightly different way, using the actual names of them
 rather than just the raw numbers.

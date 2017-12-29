@@ -12,6 +12,7 @@ const (
 	bold          string = "\x02"
 	colour        string = "\x03"
 	monospace     string = "\x11"
+	reverseColour string = "\x16"
 	italic        string = "\x1d"
 	strikethrough string = "\x1e"
 	underline     string = "\x1f"
@@ -25,7 +26,7 @@ const (
 
 var (
 	// valtoescape replaces most of IRC characters with our escapes.
-	valtoescape = strings.NewReplacer("$", "$$", colour, "$c", bold, "$b", italic, "$i", strikethrough, "$s", underline, "$u", monospace, "$m", reset, "$r")
+	valtoescape = strings.NewReplacer("$", "$$", colour, "$c", reverseColour, "$v", bold, "$b", italic, "$i", strikethrough, "$s", underline, "$u", monospace, "$m", reset, "$r")
 
 	// escapetoval contains most of our escapes and how they map to real IRC characters.
 	// intentionally skips colour, since that's handled elsewhere.
@@ -33,6 +34,7 @@ var (
 		'$': "$",
 		'b': bold,
 		'i': italic,
+		'v': reverseColour,
 		's': strikethrough,
 		'u': underline,
 		'm': monospace,
