@@ -10,7 +10,7 @@ var (
 	valtoescape = strings.NewReplacer("\\", "\\\\", ";", "\\:", " ", "\\s", "\r", "\\r", "\n", "\\n")
 
 	// escapetoval contains the IRCv3 Tag Escapes and how they map to characters.
-	escapetoval = map[byte]byte{
+	escapetoval = map[rune]byte{
 		':':  ';',
 		's':  ' ',
 		'\\': '\\',
@@ -31,10 +31,10 @@ func EscapeTagValue(in string) string {
 //
 // This function is automatically used when lines are interpreted by ParseLine,
 // so you don't need to call it yourself after parsing a line.
-func UnescapeTagValue(in string) string {
-	out := ""
-
-	for len(in) > 0 {
+func UnescapeTagValue(inString string) string {
+	in := []rune(inString)
+	var out string
+	for 0 < len(in) {
 		if in[0] == '\\' && len(in) > 1 {
 			val, exists := escapetoval[in[1]]
 			if exists == true {

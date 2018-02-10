@@ -13,12 +13,14 @@ type testcase struct {
 var tests = []testcase{
 	{"te\\nst", "te\nst"},
 	{"tes\\\\st", "tes\\st"},
+	{"te😃st", "te😃st"},
 }
 
 var unescapeTests = []testcase{
 	{"te\\n\\kst", "te\nkst"},
 	{"te\\n\\kst\\", "te\nkst"},
 	{"te\\\\nst", "te\\nst"},
+	{"te😃st", "te😃st"},
 }
 
 func TestEscape(t *testing.T) {
