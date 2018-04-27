@@ -4,6 +4,7 @@
 package ircmsg
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 )
@@ -157,74 +158,90 @@ func MakeMessage(tags *map[string]TagValue, prefix string, command string, param
 
 // Line returns a sendable line created from an IrcMessage.
 func (ircmsg *IrcMessage) Line() (string, error) {
+	bytes, err := ircmsg.line(0, 0, false)
+	return string(bytes), err
+}
+
+// LineBytes returns a sendable line, as a []byte, created from an IrcMessage.
+func (ircmsg *IrcMessage) LineBytes() ([]byte, error) {
 	return ircmsg.line(0, 0, false)
 }
 
 // LineMaxLen returns a sendable line created from an IrcMessage, limited by maxlen.
 func (ircmsg *IrcMessage) LineMaxLen(maxlenTags, maxlenRest int) (string, error) {
+	bytes, err := ircmsg.line(maxlenTags, maxlenRest, true)
+	return string(bytes), err
+}
+
+// LineMaxLen returns a sendable line created from an IrcMessage, limited by maxlen,
+// as a []byte.
+func (ircmsg *IrcMessage) LineMaxLenBytes(maxlenTags, maxlenRest int) ([]byte, error) {
 	return ircmsg.line(maxlenTags, maxlenRest, true)
 }
 
 // line returns a sendable line created from an IrcMessage.
-func (ircmsg *IrcMessage) line(maxlenTags, maxlenRest int, useMaxLen bool) (string, error) {
-	var tags, rest, line string
+func (ircmsg *IrcMessage) line(maxlenTags, maxlenRest int, useMaxLen bool) ([]byte, error) {
+	var buf bytes.Buffer
 
 	if len(ircmsg.Command) < 1 {
-		return "", errors.New("irc: IRC messages MUST have a command")
+		return nil, errors.New("irc: IRC messages MUST have a command")
 	}
 
 	if len(ircmsg.Tags) > 0 {
-		tags += "@"
+		buf.WriteString("@")
 
+		firstTag := true
 		for tag, val := range ircmsg.Tags {
-			tags += tag
-
-			if val.HasValue {
-				tags += "="
-				tags += EscapeTagValue(val.Value)
+			if !firstTag {
+				buf.WriteString(";") // delimiter
 			}
-
-			tags += ";"
+			buf.WriteString(tag)
+			if val.HasValue {
+				buf.WriteString("=")
+				buf.WriteString(EscapeTagValue(val.Value))
+			}
+			firstTag = false
 		}
-		// TODO: this is ugly, but it works for now
-		tags = strings.TrimSuffix(tags, ";")
 
 		// truncate if desired
-		if useMaxLen && len(tags) > maxlenTags {
-			tags = tags[:maxlenTags]
+		if useMaxLen && buf.Len() > maxlenTags {
+			buf.Truncate(maxlenTags)
 		}
 
-		tags += " "
+		buf.WriteString(" ")
 	}
+
+	tagsLen := buf.Len()
 
 	if len(ircmsg.Prefix) > 0 {
-		rest += ":"
-		rest += ircmsg.Prefix
-		rest += " "
+		buf.WriteString(":")
+		buf.WriteString(ircmsg.Prefix)
+		buf.WriteString(" ")
 	}
 
-	rest += ircmsg.Command
+	buf.WriteString(ircmsg.Command)
 
 	if len(ircmsg.Params) > 0 {
 		for i, param := range ircmsg.Params {
-			rest += " "
+			buf.WriteString(" ")
 			if len(param) < 1 || strings.Contains(param, " ") || param[0] == ':' {
 				if i != len(ircmsg.Params)-1 {
-					return "", errors.New("irc: Cannot have an empty param, a param with spaces, or a param that starts with ':' before the last parameter")
+					return nil, errors.New("irc: Cannot have an empty param, a param with spaces, or a param that starts with ':' before the last parameter")
 				}
-				rest += ":"
+				buf.WriteString(":")
 			}
-			rest += param
+			buf.WriteString(param)
 		}
 	}
 
 	// truncate if desired
 	// -2 for \r\n
-	if useMaxLen && len(rest) > maxlenRest-2 {
-		rest = rest[:maxlenRest-2]
+	restLen := buf.Len() - tagsLen
+	if useMaxLen && restLen > maxlenRest-2 {
+		buf.Truncate(tagsLen + (maxlenRest - 2))
 	}
 
-	line = tags + rest + "\r\n"
+	buf.WriteString("\r\n")
 
-	return line, nil
+	return buf.Bytes(), nil
 }
