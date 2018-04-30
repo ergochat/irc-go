@@ -9,3 +9,4 @@ before_install:
 script:
     - gotestcover -coverprofile=cover.out ./...
     - $HOME/gopath/bin/goveralls -service=travis-ci -coverprofile cover.out
+    - bash ./.travis.gofmt.sh
