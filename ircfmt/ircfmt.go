@@ -27,6 +27,8 @@ const (
 var (
 	// valtoescape replaces most of IRC characters with our escapes.
 	valtoescape = strings.NewReplacer("$", "$$", colour, "$c", reverseColour, "$v", bold, "$b", italic, "$i", strikethrough, "$s", underline, "$u", monospace, "$m", reset, "$r")
+	// valToStrip replaces most of the IRC characters with nothing
+	valToStrip = strings.NewReplacer(colour, "$c", reverseColour, "", bold, "", italic, "", strikethrough, "", underline, "", monospace, "", reset, "")
 
 	// escapetoval contains most of our escapes and how they map to real IRC characters.
 	// intentionally skips colour, since that's handled elsewhere.
@@ -167,6 +169,43 @@ func Escape(in string) string {
 				out.WriteString(backName)
 			}
 			out.WriteRune(']')
+
+		} else {
+			out.WriteRune(inRunes[0])
+			inRunes = inRunes[1:]
+		}
+	}
+
+	return out.String()
+}
+
+// Strip takes a raw IRC string and removes it with all formatting codes removed
+// IE, it turns this: "This is a \x02cool\x02, \x034red\x0f message!"
+// into: "This is a cool, red message!"
+func Strip(in string) string {
+	// replace all our usual escapes
+	in = valToStrip.Replace(in)
+
+	inRunes := []rune(in)
+	out := strings.Builder{}
+	for 0 < len(inRunes) {
+		if 1 < len(inRunes) && inRunes[0] == '$' && inRunes[1] == 'c' {
+			inRunes = inRunes[2:] // strip colour code chars
+
+			if len(inRunes) < 1 || !strings.ContainsRune(colours1, inRunes[0]) {
+				continue
+			}
+
+			inRunes = inRunes[1:]
+			if 0 < len(inRunes) && strings.ContainsRune(colours1, inRunes[0]) {
+				inRunes = inRunes[1:]
+			}
+			if 1 < len(inRunes) && inRunes[0] == ',' && strings.ContainsRune(colours1, inRunes[1]) {
+				inRunes = inRunes[2:]
+				if 0 < len(inRunes) && strings.ContainsRune(colours1, inRunes[0]) {
+					inRunes = inRunes[1:]
+				}
+			}
 
 		} else {
 			out.WriteRune(inRunes[0])

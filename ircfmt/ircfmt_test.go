@@ -27,6 +27,15 @@ var unescapetests = []testcase{
 	{"test$c", "test\x03"},
 }
 
+var stripTests = []testcase {
+	{"te\x02st", "test"},
+	{"te\x033st", "test"},
+	{"te\x034,3st", "test"},
+	{"te\x03034st", "te4st"},
+	{"te\x034,039st", "te9st"},
+	{" ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪", " ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪"},
+}
+
 func TestEscape(t *testing.T) {
 	for _, pair := range tests {
 		val := Escape(pair.unescaped)
@@ -73,6 +82,19 @@ func TestUnescape(t *testing.T) {
 				"expected", pair.unescaped,
 				"got", val,
 			)
+		}
+	}
+}
+
+func TestStrip(t *testing.T) {
+	for _, pair := range stripTests {
+		val := Strip(pair.escaped)
+		if val != pair.unescaped {
+			t.Error(
+				"For", pair.escaped,
+				"expected", pair.unescaped,
+				"got", val,
+				)
 		}
 	}
 }
