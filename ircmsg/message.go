@@ -276,24 +276,36 @@ func MakeMessage(tags map[string]string, prefix string, command string, params .
 }
 
 // Line returns a sendable line created from an IrcMessage.
-// fromClient controls whether the server-side or client-side tag length limit
-// is enforced. If truncateLen is nonzero, it is the length at which the
-// non-tag portion of the message is truncated.
-func (ircmsg *IrcMessage) Line(fromClient bool, truncateLen int) (string, error) {
-	bytes, err := ircmsg.line(fromClient, truncateLen)
-	return string(bytes), err
+func (ircmsg *IrcMessage) Line() (result string, err error) {
+	bytes, err := ircmsg.line(0, 0, 0, 0)
+	if err == nil {
+		result = string(bytes)
+	}
+	return
 }
 
-// LineBytes returns a sendable line, as a []byte, created from an IrcMessage.
+// LineBytesStrict returns a sendable line, as a []byte, created from an IrcMessage.
 // fromClient controls whether the server-side or client-side tag length limit
 // is enforced. If truncateLen is nonzero, it is the length at which the
 // non-tag portion of the message is truncated.
-func (ircmsg *IrcMessage) LineBytes(fromClient bool, truncateLen int) ([]byte, error) {
-	return ircmsg.line(fromClient, truncateLen)
+func (ircmsg *IrcMessage) LineBytesStrict(fromClient bool, truncateLen int) ([]byte, error) {
+	var tagLimit, clientOnlyTagDataLimit, serverAddedTagDataLimit int
+	if fromClient {
+		// enforce client max tags:
+		// <client_max>   (4096)  :: '@' <tag_data 4094> ' '
+		tagLimit = MaxlenTagsFromClient
+	} else {
+		// on the server side, enforce separate client-only and server-added tag budgets:
+		// "Servers MUST NOT add tag data exceeding 4094 bytes to messages."
+		// <combined_max> (8191)  :: '@' <tag_data 4094> ';' <tag_data 4094> ' '
+		clientOnlyTagDataLimit = MaxlenClientTagData
+		serverAddedTagDataLimit = MaxlenServerTagData
+	}
+	return ircmsg.line(tagLimit, clientOnlyTagDataLimit, serverAddedTagDataLimit, truncateLen)
 }
 
 // line returns a sendable line created from an IrcMessage.
-func (ircmsg *IrcMessage) line(fromClient bool, truncateLen int) ([]byte, error) {
+func (ircmsg *IrcMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagDataLimit, truncateLen int) ([]byte, error) {
 	if len(ircmsg.Command) < 1 {
 		return nil, ErrorCommandMissing
 	}
@@ -330,14 +342,10 @@ func (ircmsg *IrcMessage) line(fromClient bool, truncateLen int) ([]byte, error)
 	}
 	lenTags = buf.Len()
 
-	if fromClient && MaxlenTagsFromClient < buf.Len() {
-		// enforce client max tags:
-		// <client_max>   (4096)  :: '@' <tag_data 4094> ' '
+	if 0 < tagLimit && tagLimit < buf.Len() {
 		return nil, ErrorLineTooLong
-	} else if !fromClient && (MaxlenClientTagData < lenClientOnlyTags || MaxlenServerTagData < lenRegularTags) {
-		// on the server side, enforce separate client-only and server-added tag budgets:
-		// "Servers MUST NOT add tag data exceeding 4094 bytes to messages."
-		// <combined_max> (8191)  :: '@' <tag_data 4094> ';' <tag_data 4094> ' '
+	}
+	if (0 < clientOnlyTagDataLimit && clientOnlyTagDataLimit < lenClientOnlyTags) || (0 < serverAddedTagDataLimit && serverAddedTagDataLimit < lenRegularTags) {
 		return nil, ErrorLineTooLong
 	}
 

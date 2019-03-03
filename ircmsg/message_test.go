@@ -156,7 +156,7 @@ var encodelentests = []testcodewithlen{
 
 func TestEncode(t *testing.T) {
 	for _, pair := range encodetests {
-		line, err := pair.message.Line(true, 0)
+		line, err := pair.message.Line()
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -173,7 +173,7 @@ func TestEncode(t *testing.T) {
 		}
 	}
 	for _, pair := range encodelentests {
-		line, err := pair.message.Line(true, pair.length)
+		line, err := pair.message.LineBytesStrict(true, pair.length)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -181,7 +181,7 @@ func TestEncode(t *testing.T) {
 			)
 		}
 
-		if line != pair.raw {
+		if string(line) != pair.raw {
 			t.Error(
 				"For", pair.message,
 				"expected", pair.raw,
@@ -192,7 +192,7 @@ func TestEncode(t *testing.T) {
 
 	// make sure we fail on no command
 	msg := MakeMessage(nil, "example.com", "", "*")
-	_, err := msg.Line(true, 0)
+	_, err := msg.LineBytesStrict(true, 0)
 	if err == nil {
 		t.Error(
 			"For", "Test Failure 1",
@@ -203,7 +203,7 @@ func TestEncode(t *testing.T) {
 
 	// make sure we fail with params in right way
 	msg = MakeMessage(nil, "example.com", "TEST", "*", "t s", "", "Param after empty!")
-	_, err = msg.Line(true, 0)
+	_, err = msg.LineBytesStrict(true, 0)
 	if err == nil {
 		t.Error(
 			"For", "Test Failure 2",
@@ -271,11 +271,11 @@ var testMessages = []IrcMessage{
 
 func TestEncodeDecode(t *testing.T) {
 	for _, message := range testMessages {
-		encoded, err := message.Line(false, 0)
+		encoded, err := message.LineBytesStrict(false, 0)
 		if err != nil {
 			t.Errorf("Couldn't encode %v: %v", message, err)
 		}
-		parsed, err := ParseLineStrict(encoded, true, 0)
+		parsed, err := ParseLineStrict(string(encoded), true, 0)
 		if err != nil {
 			t.Errorf("Couldn't re-decode %v: %v", encoded, err)
 		}
@@ -292,7 +292,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 		Command: "PRIVMSG",
 		Params:  []string{"aaaaaaaaaaaaaaaaaaaaa"},
 	}
-	_, err := message.LineBytes(true, 0)
+	_, err := message.LineBytesStrict(true, 0)
 	if err != nil {
 		t.Error(err)
 	}
@@ -300,7 +300,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 	for i := 0; i < 100; i += 1 {
 		message.SetTag(fmt.Sprintf("+client-tag-%d", i), "ok")
 	}
-	line, err := message.LineBytes(true, 0)
+	line, err := message.LineBytesStrict(true, 0)
 	if err != nil {
 		t.Error(err)
 	}
@@ -312,7 +312,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 	for i := 100; i < 500; i += 1 {
 		message.SetTag(fmt.Sprintf("+client-tag-%d", i), "ok")
 	}
-	line, err = message.LineBytes(true, 0)
+	line, err = message.LineBytesStrict(true, 0)
 	if err != ErrorLineTooLong {
 		t.Error(err)
 	}
@@ -321,7 +321,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 	for i := 0; i < 500; i += 1 {
 		message.SetTag(fmt.Sprintf("server-tag-%d", i), "ok")
 	}
-	line, err = message.LineBytes(true, 0)
+	line, err = message.LineBytesStrict(true, 0)
 	if err != ErrorLineTooLong {
 		t.Error(err)
 	}
@@ -333,12 +333,12 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 		message.SetTag(fmt.Sprintf("+client-tag-%d", i), "ok")
 	}
 	// client cannot send this much tag data:
-	line, err = message.LineBytes(true, 0)
+	line, err = message.LineBytesStrict(true, 0)
 	if err != ErrorLineTooLong {
 		t.Error(err)
 	}
 	// but a server can, since the tags are split between client and server budgets:
-	line, err = message.LineBytes(false, 0)
+	line, err = message.LineBytesStrict(false, 0)
 	if err != nil {
 		t.Error(err)
 	}
@@ -353,7 +353,7 @@ func BenchmarkGenerate(b *testing.B) {
 	)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		msg.LineBytes(false, 0)
+		msg.LineBytesStrict(false, 0)
 	}
 }
 
