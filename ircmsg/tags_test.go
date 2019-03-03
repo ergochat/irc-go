@@ -1,6 +1,7 @@
 package ircmsg
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -21,6 +22,14 @@ var unescapeTests = []testcase{
 	{"te\\n\\kst\\", "te\nkst"},
 	{"te\\\\nst", "te\\nst"},
 	{"te😃st", "te😃st"},
+	{"0\\n1\\n2\\n3\\n4\\n5\\n6\\n\\", "0\n1\n2\n3\n4\n5\n6\n"},
+	{"test\\", "test"},
+	{"te\\:st\\", "te;st"},
+	{"te\\:\\st\\", "te; t"},
+	{"\\\\te\\:\\st", "\\te; t"},
+	{"test\\", "test"},
+	{"\\", ""},
+	{"", ""},
 }
 
 func TestEscape(t *testing.T) {
@@ -65,50 +74,23 @@ func TestUnescape(t *testing.T) {
 // tag string tests
 type testtags struct {
 	raw  string
-	tags map[string]TagValue
-}
-type testtagswithlen struct {
-	raw    string
-	length int
-	tags   map[string]TagValue
+	tags map[string]string
 }
 
-var tagdecodelentests = []testtagswithlen{
-	{"time=12732;re", 512, *MakeTags("time", "12732", "re", nil)},
-	{"time=12732;re", 12, *MakeTags("time", "12732", "r", nil)},
-	{"", 512, *MakeTags()},
-}
 var tagdecodetests = []testtags{
-	{"", *MakeTags()},
-	{"time=12732;re", *MakeTags("time", "12732", "re", nil)},
+	{"", map[string]string{}},
+	{"time=12732;re", map[string]string{"time": "12732", "re": ""}},
+	{"time=12732;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
 }
-var tagdecodetesterrors = []string{
-	"\r\n",
-	"     \r\n",
-	"tags=tesa\r\n",
-	"tags=tested  \r\n",
+
+func parseTags(rawTags string) (map[string]string, error) {
+	message, err := ParseLine(fmt.Sprintf("@%s :shivaram TAGMSG #darwin\r\n", rawTags), true, 0)
+	return message.AllTags(), err
 }
 
 func TestDecodeTags(t *testing.T) {
-	for _, pair := range tagdecodelentests {
-		tags, err := parseTags(pair.raw, pair.length, true)
-		if err != nil {
-			t.Error(
-				"For", pair.raw,
-				"Failed to parse tags:", err,
-			)
-		}
-
-		if !reflect.DeepEqual(tags, pair.tags) {
-			t.Error(
-				"For", pair.raw,
-				"expected", pair.tags,
-				"got", tags,
-			)
-		}
-	}
 	for _, pair := range tagdecodetests {
-		tags, err := ParseTags(pair.raw)
+		tags, err := parseTags(pair.raw)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -121,14 +103,6 @@ func TestDecodeTags(t *testing.T) {
 				"For", pair.raw,
 				"expected", pair.tags,
 				"got", tags,
-			)
-		}
-	}
-	for _, line := range tagdecodetesterrors {
-		_, err := ParseTags(line)
-		if err == nil {
-			t.Error(
-				"Expected to fail parsing", line,
 			)
 		}
 	}
