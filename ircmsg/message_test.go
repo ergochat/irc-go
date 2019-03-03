@@ -90,7 +90,7 @@ var decodetesterrors = []testparseerror{
 
 func TestDecode(t *testing.T) {
 	for _, pair := range decodelentests {
-		ircmsg, err := ParseLine(pair.raw, true, pair.length)
+		ircmsg, err := ParseLineStrict(pair.raw, true, pair.length)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -107,7 +107,7 @@ func TestDecode(t *testing.T) {
 		}
 	}
 	for _, pair := range decodetests {
-		ircmsg, err := ParseLine(pair.raw, true, 0)
+		ircmsg, err := ParseLine(pair.raw)
 		if err != nil {
 			t.Error(
 				"For", pair.raw,
@@ -124,7 +124,7 @@ func TestDecode(t *testing.T) {
 		}
 	}
 	for _, pair := range decodetesterrors {
-		_, err := ParseLine(pair.raw, true, 0)
+		_, err := ParseLineStrict(pair.raw, true, 0)
 		if err != pair.err {
 			t.Error(
 				"For", pair.raw,
@@ -275,7 +275,7 @@ func TestEncodeDecode(t *testing.T) {
 		if err != nil {
 			t.Errorf("Couldn't encode %v: %v", message, err)
 		}
-		parsed, err := ParseLine(encoded, true, 0)
+		parsed, err := ParseLineStrict(encoded, true, 0)
 		if err != nil {
 			t.Errorf("Couldn't re-decode %v: %v", encoded, err)
 		}
@@ -360,6 +360,6 @@ func BenchmarkGenerate(b *testing.B) {
 func BenchmarkParse(b *testing.B) {
 	line := "@account=shivaram;draft/msgid=dqhkgglocqikjqikbkcdnv5dsq;time=2019-03-01T20:11:21.833Z :shivaram!~shivaram@good-fortune PRIVMSG #darwin :you're an EU citizen, right? it's illegal for you to be here now"
 	for i := 0; i < b.N; i++ {
-		ParseLine(line, false, 0)
+		ParseLineStrict(line, false, 0)
 	}
 }

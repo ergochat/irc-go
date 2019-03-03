@@ -129,6 +129,24 @@ func (msg *IrcMessage) ClientOnlyTags() map[string]string {
 	return msg.clientOnlyTags
 }
 
+// ParseLine creates and returns a message from the given IRC line.
+func ParseLine(line string) (ircmsg IrcMessage, err error) {
+	return parseLine(line, 0, 0)
+}
+
+// ParseLineStrict creates and returns an IrcMessage from the given IRC line,
+// taking the maximum length into account and truncating the message as appropriate.
+// If fromClient is true, it enforces the client limit on tag data length (4094 bytes),
+// allowing the server to return ERR_INPUTTOOLONG as appropriate. If truncateLen is
+// nonzero, it is the length at which the non-tag portion of the message is truncated.
+func ParseLineStrict(line string, fromClient bool, truncateLen int) (ircmsg IrcMessage, err error) {
+	maxTagDataLength := MaxlenTagData
+	if fromClient {
+		maxTagDataLength = MaxlenClientTagData
+	}
+	return parseLine(line, maxTagDataLength, truncateLen)
+}
+
 // slice off any amount of '\r' or '\n' from the end of the string
 func trimFinalNewlines(str string) string {
 	var i int
@@ -137,11 +155,7 @@ func trimFinalNewlines(str string) string {
 	return str[:i+1]
 }
 
-// ParseLine creates and returns an IrcMessage from the given IRC line,
-// taking the maximum length into account and truncating the message as appropriate.
-// If fromClient is true, it enforces the client limit on tag data length (4094 bytes),
-// allowing the server to return ERR_INPUTTOOLONG as appropriate.
-func ParseLine(line string, fromClient bool, truncateLen int) (ircmsg IrcMessage, err error) {
+func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMessage, err error) {
 	if strings.IndexByte(line, '\x00') != -1 {
 		err = ErrorLineContainsBadChar
 		return
@@ -160,11 +174,7 @@ func ParseLine(line string, fromClient bool, truncateLen int) (ircmsg IrcMessage
 			return ircmsg, ErrorLineIsEmpty
 		}
 		tags := line[1:tagEnd]
-		maxTagDataLength := MaxlenTagData
-		if fromClient {
-			maxTagDataLength = MaxlenClientTagData
-		}
-		if maxTagDataLength < len(tags) {
+		if 0 < maxTagDataLength && maxTagDataLength < len(tags) {
 			return ircmsg, ErrorLineTooLong
 		}
 		err = ircmsg.parseTags(tags)

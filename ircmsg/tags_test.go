@@ -84,7 +84,7 @@ var tagdecodetests = []testtags{
 }
 
 func parseTags(rawTags string) (map[string]string, error) {
-	message, err := ParseLine(fmt.Sprintf("@%s :shivaram TAGMSG #darwin\r\n", rawTags), true, 0)
+	message, err := ParseLineStrict(fmt.Sprintf("@%s :shivaram TAGMSG #darwin\r\n", rawTags), true, 0)
 	return message.AllTags(), err
 }
 
