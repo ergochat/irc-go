@@ -264,14 +264,10 @@ func (ircmsg *IrcMessage) parseTags(tags string) (err error) {
 
 // MakeMessage provides a simple way to create a new IrcMessage.
 func MakeMessage(tags map[string]string, prefix string, command string, params ...string) (ircmsg IrcMessage) {
-	for tag, value := range tags {
-		ircmsg.SetTag(tag, value)
-	}
-
 	ircmsg.Prefix = prefix
 	ircmsg.Command = command
 	ircmsg.Params = params
-
+	ircmsg.UpdateTags(tags)
 	return ircmsg
 }
 
