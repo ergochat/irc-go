@@ -27,7 +27,7 @@ var unescapetests = []testcase{
 	{"test$c", "test\x03"},
 }
 
-var stripTests = []testcase {
+var stripTests = []testcase{
 	{"te\x02st", "test"},
 	{"te\x033st", "test"},
 	{"te\x034,3st", "test"},
@@ -94,7 +94,7 @@ func TestStrip(t *testing.T) {
 				"For", pair.escaped,
 				"expected", pair.unescaped,
 				"got", val,
-				)
+			)
 		}
 	}
 }

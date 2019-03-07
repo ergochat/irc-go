@@ -4,3 +4,4 @@ test:
 	cd ircmatch && go test . && go vet .
 	cd ircmsg && go test . && go vet .
 	cd ircutils && go test . && go vet .
+	./.check_gofmt.sh
