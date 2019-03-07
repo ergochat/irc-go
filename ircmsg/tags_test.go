@@ -81,6 +81,7 @@ var tagdecodetests = []testtags{
 	{"", map[string]string{}},
 	{"time=12732;re", map[string]string{"time": "12732", "re": ""}},
 	{"time=12732;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
+	{"=these;time=12732;=shouldbe;re=;asdf=5678;=ignored", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
 }
 
 func parseTags(rawTags string) (map[string]string, error) {
