@@ -175,7 +175,7 @@ func Escape(in string) string {
 			if len(inRunes) > 2 && inRunes[0] == '$' && inRunes[1] == '$' && inRunes[2] == 'c' {
 				out.WriteRune(inRunes[0])
 				out.WriteRune(inRunes[1])
-                out.WriteRune(inRunes[2])
+				out.WriteRune(inRunes[2])
 				inRunes = inRunes[3:]
 			} else {
 				out.WriteRune(inRunes[0])
