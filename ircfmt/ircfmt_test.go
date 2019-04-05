@@ -14,6 +14,9 @@ var tests = []testcase{
 	{"te$c[green]4st", "te\x03034st"},
 	{"te$c[red,green]9st", "te\x034,039st"},
 	{" ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪", " ▀█▄▀▪.▀  ▀ ▀  ▀ ·▀▀▀▀  ▀█▄▀ ▀▀ █▪ ▀█▄▀▪"},
+	{"test $$c", "test $c"},
+	{"test $c[]", "test \x03"},
+	{"test $$", "test $"},
 }
 
 var escapetests = []testcase{
@@ -57,6 +60,16 @@ func TestEscape(t *testing.T) {
 				"expected", pair.escaped,
 				"got", val,
 			)
+		}
+	}
+}
+
+func TestChain(t *testing.T) {
+	for _, pair := range tests {
+		escaped := Escape(pair.unescaped)
+		unescaped := Unescape(escaped)
+		if unescaped != pair.unescaped {
+			t.Errorf("for %q expected %q got %q", pair.unescaped, pair.unescaped, unescaped)
 		}
 	}
 }
