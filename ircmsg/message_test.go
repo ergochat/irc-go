@@ -156,6 +156,23 @@ var encodelentests = []testcodewithlen{
 
 func TestEncode(t *testing.T) {
 	for _, pair := range encodetests {
+		line, err := pair.message.LineBytes()
+		if err != nil {
+			t.Error(
+				"For", pair.raw,
+				"Failed to parse line:", err,
+			)
+		}
+
+		if string(line) != pair.raw {
+			t.Error(
+				"For LineBytes of", pair.message,
+				"expected", pair.raw,
+				"got", line,
+			)
+		}
+	}
+	for _, pair := range encodetests {
 		line, err := pair.message.Line()
 		if err != nil {
 			t.Error(

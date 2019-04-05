@@ -280,6 +280,12 @@ func (ircmsg *IrcMessage) Line() (result string, err error) {
 	return
 }
 
+// LineBytes returns a sendable line created from an IrcMessage.
+func (ircmsg *IrcMessage) LineBytes() (result []byte, err error) {
+	result, err = ircmsg.line(0, 0, 0, 0)
+	return
+}
+
 // LineBytesStrict returns a sendable line, as a []byte, created from an IrcMessage.
 // fromClient controls whether the server-side or client-side tag length limit
 // is enforced. If truncateLen is nonzero, it is the length at which the
