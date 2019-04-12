@@ -18,7 +18,14 @@ const (
 	underline     string = "\x1f"
 	reset         string = "\x0f"
 
-	runecolour rune = '\x03'
+	runecolour        rune = '\x03'
+	runebold          rune = '\x02'
+	runemonospace     rune = '\x11'
+	runereverseColour rune = '\x16'
+	runeitalic        rune = '\x1d'
+	runestrikethrough rune = '\x1e'
+	runereset         rune = '\x0f'
+	runeunderline     rune = '\x1f'
 
 	// valid characters in a colour code character, for speed
 	colours1 string = "0123456789"
@@ -191,37 +198,48 @@ func Escape(in string) string {
 // IE, it turns this: "This is a \x02cool\x02, \x034red\x0f message!"
 // into: "This is a cool, red message!"
 func Strip(in string) string {
-	// replace all our usual escapes
-	in = valToStrip.Replace(in)
-
-	inRunes := []rune(in)
 	out := strings.Builder{}
-	for 0 < len(inRunes) {
-		if 1 < len(inRunes) && inRunes[0] == '$' && inRunes[1] == 'c' {
-			inRunes = inRunes[2:] // strip colour code chars
-
-			if len(inRunes) < 1 || !strings.ContainsRune(colours1, inRunes[0]) {
-				continue
-			}
-
-			inRunes = inRunes[1:]
-			if 0 < len(inRunes) && strings.ContainsRune(colours1, inRunes[0]) {
-				inRunes = inRunes[1:]
-			}
-			if 1 < len(inRunes) && inRunes[0] == ',' && strings.ContainsRune(colours1, inRunes[1]) {
-				inRunes = inRunes[2:]
-				if 0 < len(inRunes) && strings.ContainsRune(colours1, inRunes[0]) {
-					inRunes = inRunes[1:]
-				}
-			}
-
-		} else {
-			out.WriteRune(inRunes[0])
-			inRunes = inRunes[1:]
+	runes := []rune(in)
+	if out.Len() < len(runes) { // Reduce allocations where needed
+		out.Grow(len(in) - out.Len())
+	}
+	for len(runes) > 0 {
+		switch runes[0] {
+		case runebold, runemonospace, runereverseColour, runeitalic, runestrikethrough, runeunderline, runereset:
+			runes = runes[1:]
+		case runecolour:
+			runes = removeColour(runes)
+		default:
+			out.WriteRune(runes[0])
+			runes = runes[1:]
 		}
 	}
-
 	return out.String()
+}
+
+func removeNumber(runes []rune) []rune {
+	if len(runes) > 0 && runes[0] >= '0' && runes[0] <= '9' {
+		runes = runes[1:]
+	}
+	return runes
+}
+
+func removeColour(runes []rune) []rune {
+	if runes[0] != runecolour {
+		return runes
+	}
+
+	runes = runes[1:]
+	runes = removeNumber(runes)
+	runes = removeNumber(runes)
+
+	if len(runes) > 1 && runes[0] == ',' && runes[1] >= '0' && runes[1] <= '9' {
+		runes = runes[2:]
+	} else {
+		return runes // Nothing else because we dont have a comma
+	}
+	runes = removeNumber(runes)
+	return runes
 }
 
 // Unescape takes our escaped string and returns a raw IRC string.
