@@ -122,7 +122,7 @@ func TestTLSConnection(t *testing.T) {
 	testServerConnection(t, reactor, client, listener)
 }
 
-func sendMessage(conn net.Conn, tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) {
+func sendMessage(conn net.Conn, tags map[string]string, prefix string, command string, params ...string) {
 	ircmsg := ircmsg.MakeMessage(tags, prefix, command, params...)
 	line, err := ircmsg.Line()
 	if err != nil {
