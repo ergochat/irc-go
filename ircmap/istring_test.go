@@ -26,9 +26,9 @@ var equalRFC3454Tests = []testcase{
 }
 
 var equalRFC7613Tests = []testcase{
-	{"#TeStChAn", "#testchan"},
-	{"#beßtchannEL", "#beßtchannel"},
-	{"３４５６3456", "34563456"},
+	{"##愛でる", "##愛でる"},
+	{"#ß", "#ß"},
+	{"БЙЮЯ", "бйюя"},
 }
 
 func TestASCII(t *testing.T) {

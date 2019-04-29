@@ -4,6 +4,7 @@
 package ircmap
 
 import (
+	"errors"
 	"strings"
 
 	"golang.org/x/text/secure/precis"
@@ -42,6 +43,12 @@ var (
 	}
 )
 
+// ChannelPrefixes are the allowed prefixes for channels, used in casefolding.
+var ChannelPrefixes = map[byte]bool{
+	'#': true,
+	'&': true,
+}
+
 // rfc1459Fold casefolds only the special chars defined by RFC1459 -- the
 // others are handled by the strings.ToLower earlier.
 func rfc1459Fold(r rune) rune {
@@ -49,6 +56,40 @@ func rfc1459Fold(r rune) rune {
 		r += '{' - '['
 	}
 	return r
+}
+
+var (
+	// ErrCouldNotStabilize indicates that we could not stabilize the input string.
+	ErrCouldNotStabilize = errors.New("Could not stabilize string while casefolding")
+)
+
+// Each pass of PRECIS casefolding is a composition of idempotent operations,
+// but not idempotent itself. Therefore, the spec says "do it four times and hope
+// it converges" (lolwtf). Golang's PRECIS implementation has a "repeat" option,
+// which provides this functionality, but unfortunately it's not exposed publicly.
+func iterateFolding(profile *precis.Profile, oldStr string) (str string, err error) {
+	str = oldStr
+	// follow the stabilizing rules laid out here:
+	// https://tools.ietf.org/html/draft-ietf-precis-7564bis-10.html#section-7
+	for i := 0; i < 4; i++ {
+		str, err = profile.CompareKey(str)
+		if err != nil {
+			return "", err
+		}
+		if oldStr == str {
+			break
+		}
+		oldStr = str
+	}
+	if oldStr != str {
+		return "", ErrCouldNotStabilize
+	}
+	return str, nil
+}
+
+// PrecisCasefold returns a casefolded string, without doing any name or channel character checks.
+func PrecisCasefold(str string) (string, error) {
+	return iterateFolding(precis.UsernameCaseMapped, str)
 }
 
 // Casefold returns a string, lowercased/casefolded according to the given
@@ -69,7 +110,17 @@ func Casefold(mapping MappingType, input string) (string, error) {
 	} else if mapping == RFC3454 {
 		out, err = stringprep.Nameprep(input)
 	} else if mapping == RFC7613 {
-		out, err = precis.UsernameCaseMapped.CompareKey(input)
+		// skip channel prefixes to avoid bidi rule (as per spec)
+		var start int
+		for start = 0; start < len(input) && ChannelPrefixes[input[start]]; start++ {
+		}
+
+		lowered, err := PrecisCasefold(input[start:])
+		if err != nil {
+			return "", err
+		}
+
+		return input[:start] + lowered, err
 	}
 
 	return out, err
