@@ -45,8 +45,14 @@ var (
 
 // ChannelPrefixes are the allowed prefixes for channels, used in casefolding.
 var ChannelPrefixes = map[byte]bool{
+	// standard, well-used
 	'#': true,
 	'&': true,
+	// standard, not well-used
+	'!': true,
+	'+': true,
+	// znc uses for partylines
+	'~': true,
 }
 
 // rfc1459Fold casefolds only the special chars defined by RFC1459 -- the
