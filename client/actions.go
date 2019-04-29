@@ -5,11 +5,10 @@ package gircclient
 
 import (
 	"github.com/goshuirc/irc-go/ircfmt"
-	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 // Msg sends a message to the given target.
-func (sc *ServerConnection) Msg(tags *map[string]ircmsg.TagValue, target string, message string, escaped bool) {
+func (sc *ServerConnection) Msg(tags *map[string]string, target string, message string, escaped bool) {
 	if escaped {
 		message = ircfmt.Unescape(message)
 	}
@@ -17,7 +16,7 @@ func (sc *ServerConnection) Msg(tags *map[string]ircmsg.TagValue, target string,
 }
 
 // Notice sends a notice to the given target.
-func (sc *ServerConnection) Notice(tags *map[string]ircmsg.TagValue, target string, message string, escaped bool) {
+func (sc *ServerConnection) Notice(tags *map[string]string, target string, message string, escaped bool) {
 	if escaped {
 		message = ircfmt.Unescape(message)
 	}

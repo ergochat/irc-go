@@ -236,7 +236,7 @@ func (sc *ServerConnection) Casefold(message string) (string, error) {
 
 // Send sends an IRC message to the server. If the message cannot be converted
 // to a raw IRC line, an error is returned.
-func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) error {
+func (sc *ServerConnection) Send(tags *map[string]string, prefix string, command string, params ...string) error {
 	msg := ircmsg.MakeMessage(tags, prefix, command, params...)
 	line, err := msg.Line()
 	if err != nil {
@@ -251,7 +251,7 @@ func (sc *ServerConnection) Send(tags *map[string]ircmsg.TagValue, prefix string
 	info["data"] = line
 	sc.dispatchRawOut(info)
 
-	var outTags map[string]ircmsg.TagValue
+	var outTags map[string]string
 	if tags == nil {
 		outTags = *ircmsg.MakeTags()
 	} else {
