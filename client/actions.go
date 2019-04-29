@@ -8,7 +8,7 @@ import (
 )
 
 // Msg sends a message to the given target.
-func (sc *ServerConnection) Msg(tags *map[string]string, target string, message string, escaped bool) {
+func (sc *ServerConnection) Msg(tags map[string]string, target string, message string, escaped bool) {
 	if escaped {
 		message = ircfmt.Unescape(message)
 	}
@@ -16,7 +16,7 @@ func (sc *ServerConnection) Msg(tags *map[string]string, target string, message 
 }
 
 // Notice sends a notice to the given target.
-func (sc *ServerConnection) Notice(tags *map[string]string, target string, message string, escaped bool) {
+func (sc *ServerConnection) Notice(tags map[string]string, target string, message string, escaped bool) {
 	if escaped {
 		message = ircfmt.Unescape(message)
 	}

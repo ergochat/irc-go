@@ -156,7 +156,7 @@ func (sc *ServerConnection) ProcessIncomingLine(line string) {
 	info := eventmgr.NewInfoMap()
 	info["server"] = sc
 	info["direction"] = "in"
-	info["tags"] = message.Tags
+	info["tags"] = message.AllTags()
 	info["prefix"] = message.Prefix
 	info["command"] = cmd
 	info["params"] = message.Params
@@ -236,7 +236,7 @@ func (sc *ServerConnection) Casefold(message string) (string, error) {
 
 // Send sends an IRC message to the server. If the message cannot be converted
 // to a raw IRC line, an error is returned.
-func (sc *ServerConnection) Send(tags *map[string]string, prefix string, command string, params ...string) error {
+func (sc *ServerConnection) Send(tags map[string]string, prefix string, command string, params ...string) error {
 	msg := ircmsg.MakeMessage(tags, prefix, command, params...)
 	line, err := msg.Line()
 	if err != nil {
@@ -253,9 +253,9 @@ func (sc *ServerConnection) Send(tags *map[string]string, prefix string, command
 
 	var outTags map[string]string
 	if tags == nil {
-		outTags = *ircmsg.MakeTags()
+		outTags = map[string]string{}
 	} else {
-		outTags = *tags
+		outTags = tags
 	}
 
 	// dispatch real event
