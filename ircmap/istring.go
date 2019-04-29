@@ -102,6 +102,14 @@ func PrecisCasefold(str string) (string, error) {
 // mapping as defined by this package (or an error if the given string is not
 // valid in the chosen mapping).
 func Casefold(mapping MappingType, input string) (string, error) {
+	return CasefoldCustomChannelPrefixes(mapping, input, ChannelPrefixes)
+}
+
+// CasefoldCustomChannelPrefixes returns a string, lowercased/casefolded
+// according to the given mapping as defined by this package (or an error if
+// the given string is not valid in the chosen mapping), using a custom
+// channel prefix map.
+func CasefoldCustomChannelPrefixes(mapping MappingType, input string, channelPrefixes map[byte]bool) (string, error) {
 	var out string
 	var err error
 
@@ -118,7 +126,7 @@ func Casefold(mapping MappingType, input string) (string, error) {
 	} else if mapping == RFC7613 {
 		// skip channel prefixes to avoid bidi rule (as per spec)
 		var start int
-		for start = 0; start < len(input) && ChannelPrefixes[input[start]]; start++ {
+		for start = 0; start < len(input) && channelPrefixes[input[start]]; start++ {
 		}
 
 		lowered, err := PrecisCasefold(input[start:])
