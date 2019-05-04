@@ -178,9 +178,9 @@ func (sc *ServerConnection) ProcessIncomingLine(line string) {
 
 	// IRC commands are case-insensitive
 	sc.dispatchIn(strings.ToUpper(cmd), info)
-        if strings.ToUpper(cmd) == "PRIVMSG" {
-            sc.dispatchBasicCmd(info)
-        }
+	if strings.ToUpper(cmd) == "PRIVMSG" {
+		sc.dispatchBasicCmd(info)
+	}
 
 }
 
@@ -281,14 +281,14 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 
 // dispatchCommand dispatches an event based on simple commands (e.g !help)
 func (sc *ServerConnection) dispatchBasicCmd(info eventmgr.InfoMap) {
-    cmd := info["params"].([]string)
-    pfx := cmd[1][0]
+	cmd := info["params"].([]string)
+	pfx := cmd[1][0]
 
-    for _, p := range basicCmdPrefixes {
-        if pfx == p {
-            sc.eventsIn.Dispatch("cmd"+cmd[1], info)
-        }
-    }
+	for _, p := range basicCmdPrefixes {
+		if pfx == p {
+			sc.eventsIn.Dispatch("cmd"+cmd[1], info)
+		}
+	}
 }
 
 // dispatchRawIn dispatches raw inbound messages.
