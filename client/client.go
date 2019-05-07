@@ -248,7 +248,7 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(sc.RawConnection, line)
+	fmt.Fprint(sc.RawConnection, line)
 
 	// dispatch raw event
 	info := eventmgr.NewInfoMap()
