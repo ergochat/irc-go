@@ -179,7 +179,7 @@ func (sc *ServerConnection) ProcessIncomingLine(line string) {
 	// IRC commands are case-insensitive
 	sc.dispatchIn(strings.ToUpper(cmd), info)
 	if strings.ToUpper(cmd) == "PRIVMSG" {
-		sc.dispatchBasicCmd(info)
+		sc.dispatchCommand(info)
 	}
 
 }
@@ -285,14 +285,15 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 }
 
 // dispatchCommand dispatches an event based on simple commands (e.g !help)
-func (sc *ServerConnection) dispatchBasicCmd(info eventmgr.InfoMap) {
-	cmd := strings.Split(info["params"].([]string)[1], " ")[0]
-	pfx := cmd[0]
+func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
+	params := strings.Split(info["params"].([]string)[1], " ")
 
 	for _, p := range basicCmdPrefixes {
-		if pfx == p {
-			sc.eventsIn.Dispatch("cmd"+cmd, info)
-		}
+		if strings.HasPrefix(params[0], string(p)) {
+            sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
+        } else if (params[0] == sc.Nick || params[0] == sc.Nick + ":") && len(params) > 1 {
+            sc.eventsIn.Dispatch("cmd_"+params[1], info)
+        }
 	}
 }
 
