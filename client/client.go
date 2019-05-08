@@ -20,11 +20,11 @@ import (
 
 // ServerConnection is a connection to a single server.
 type ServerConnection struct {
-	Name        string
-	Connected   bool
-	Registered  bool
-	Casemapping ircmap.MappingType
-    CommandPrefixes []string
+	Name            string
+	Connected       bool
+	Registered      bool
+	Casemapping     ircmap.MappingType
+	CommandPrefixes []string
 
 	// internal stuff
 	RawConnection  net.Conn
@@ -229,7 +229,7 @@ func (sc *ServerConnection) RegisterEvent(direction string, name string, handler
 
 // RegisterCommand registers a command to be called via the configured prefix or the client's nickname (e.g !help, "GoshuBot: help")
 func (sc *ServerConnection) RegisterCommand(name string, handler eventmgr.HandlerFn, priority int) {
-    sc.eventsIn.Attach("cmd_"+name, handler, priority)
+	sc.eventsIn.Attach("cmd_"+name, handler, priority)
 }
 
 // Shutdown closes the connection to the server.
@@ -289,14 +289,14 @@ func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
 
 	for _, p := range sc.CommandPrefixes {
 		if strings.HasPrefix(params[0], p) {
-            sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
-            return
-        }
+			sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
+			return
+		}
 	}
 
-    if (params[0] == sc.Nick || params[0] == sc.Nick + ":") && len(params) > 1 {
-        sc.eventsIn.Dispatch("cmd_"+params[1], info)
-    }
+	if (params[0] == sc.Nick || params[0] == sc.Nick+":") && len(params) > 1 {
+		sc.eventsIn.Dispatch("cmd_"+params[1], info)
+	}
 }
 
 // dispatchRawIn dispatches raw inbound messages.
