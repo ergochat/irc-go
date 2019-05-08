@@ -20,10 +20,11 @@ import (
 
 // ServerConnection is a connection to a single server.
 type ServerConnection struct {
-	Name        string
-	Connected   bool
-	Registered  bool
-	Casemapping ircmap.MappingType
+	Name            string
+	Connected       bool
+	Registered      bool
+	Casemapping     ircmap.MappingType
+	CommandPrefixes []string
 
 	// internal stuff
 	RawConnection  net.Conn
@@ -176,6 +177,10 @@ func (sc *ServerConnection) ProcessIncomingLine(line string) {
 
 	// IRC commands are case-insensitive
 	sc.dispatchIn(strings.ToUpper(cmd), info)
+	if strings.ToUpper(cmd) == "PRIVMSG" {
+		sc.dispatchCommand(info)
+	}
+
 }
 
 // Disconnect closes the IRC socket.
@@ -220,6 +225,11 @@ func (sc *ServerConnection) RegisterEvent(direction string, name string, handler
 	if direction == "out" || direction == "both" {
 		sc.eventsOut.Attach(name, handler, priority)
 	}
+}
+
+// RegisterCommand registers a command to be called via the configured prefix or the client's nickname (e.g !help, "GoshuBot: help")
+func (sc *ServerConnection) RegisterCommand(name string, handler eventmgr.HandlerFn, priority int) {
+	sc.eventsIn.Attach("cmd_"+name, handler, priority)
 }
 
 // Shutdown closes the connection to the server.
@@ -271,6 +281,22 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 	sc.dispatchOut(strings.ToUpper(command), info)
 
 	return nil
+}
+
+// dispatchCommand dispatches an event based on simple commands (e.g !help)
+func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
+	params := strings.Fields(info["params"].([]string)[1])
+
+	for _, p := range sc.CommandPrefixes {
+		if strings.HasPrefix(params[0], p) {
+			sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
+			return
+		}
+	}
+
+	if (params[0] == sc.Nick || params[0] == sc.Nick+":") && len(params) > 1 {
+		sc.eventsIn.Dispatch("cmd_"+params[1], info)
+	}
 }
 
 // dispatchRawIn dispatches raw inbound messages.
