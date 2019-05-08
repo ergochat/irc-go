@@ -18,14 +18,13 @@ import (
 	"github.com/goshuirc/irc-go/ircmsg"
 )
 
-var basicCmdPrefixes = []byte{'!', '@', '~', '.', '$'}
-
 // ServerConnection is a connection to a single server.
 type ServerConnection struct {
 	Name        string
 	Connected   bool
 	Registered  bool
 	Casemapping ircmap.MappingType
+    CommandPrefixes []string
 
 	// internal stuff
 	RawConnection  net.Conn
@@ -288,13 +287,16 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
 	params := strings.Split(info["params"].([]string)[1], " ")
 
-	for _, p := range basicCmdPrefixes {
-		if strings.HasPrefix(params[0], string(p)) {
+	for _, p := range sc.CommandPrefixes {
+		if strings.HasPrefix(params[0], p) {
             sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
-        } else if (params[0] == sc.Nick || params[0] == sc.Nick + ":") && len(params) > 1 {
-            sc.eventsIn.Dispatch("cmd_"+params[1], info)
+            return
         }
 	}
+
+    if (params[0] == sc.Nick || params[0] == sc.Nick + ":") && len(params) > 1 {
+        sc.eventsIn.Dispatch("cmd_"+params[1], info)
+    }
 }
 
 // dispatchRawIn dispatches raw inbound messages.
