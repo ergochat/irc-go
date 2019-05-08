@@ -285,7 +285,7 @@ func (sc *ServerConnection) Send(tags map[string]string, prefix string, command 
 
 // dispatchCommand dispatches an event based on simple commands (e.g !help)
 func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
-	params := strings.Split(info["params"].([]string)[1], " ")
+	params := strings.Fields(info["params"].([]string)[1])
 
 	for _, p := range sc.CommandPrefixes {
 		if strings.HasPrefix(params[0], p) {
