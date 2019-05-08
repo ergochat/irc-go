@@ -228,6 +228,11 @@ func (sc *ServerConnection) RegisterEvent(direction string, name string, handler
 	}
 }
 
+// RegisterCommand registers a command to be called via the configured prefix or the client's nickname (e.g !help, "GoshuBot: help")
+func (sc *ServerConnection) RegisterCommand(name string, handler eventmgr.HandlerFn, priority int) {
+    sc.eventsIn.Attach("cmd_"+name, handler, priority)
+}
+
 // Shutdown closes the connection to the server.
 func (sc *ServerConnection) Shutdown(message string) {
 	sc.Send(nil, "", "QUIT", message)
