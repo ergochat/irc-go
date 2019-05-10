@@ -289,12 +289,22 @@ func (sc *ServerConnection) dispatchCommand(info eventmgr.InfoMap) {
 
 	for _, p := range sc.CommandPrefixes {
 		if strings.HasPrefix(params[0], p) {
+            if len(params) > 1 {
+                info["cmdparams"] = params[1:]
+            }else {
+                info["cmdparams"] = []string{}
+            }
 			sc.eventsIn.Dispatch("cmd_"+params[0][1:], info)
 			return
 		}
 	}
 
 	if (params[0] == sc.Nick || params[0] == sc.Nick+":") && len(params) > 1 {
+        if len(params) > 2 {
+            info["cmdparams"] = params[2:]
+        } else {
+            info["cmdparams"] = []string{}
+        }
 		sc.eventsIn.Dispatch("cmd_"+params[1], info)
 	}
 }
