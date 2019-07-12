@@ -71,6 +71,10 @@ var decodetests = []testcode{
 		MakeMessage(nil, "", "LIST")},
 	{"list  ",
 		MakeMessage(nil, "", "LIST")},
+	{"privmsg #darwin :command injection attempt \n:Nickserv PRIVMSG user :Please re-enter your password",
+		MakeMessage(nil, "", "PRIVMSG", "#darwin", "command injection attempt ")},
+	{"privmsg #darwin :command injection attempt \r:Nickserv PRIVMSG user :Please re-enter your password",
+		MakeMessage(nil, "", "PRIVMSG", "#darwin", "command injection attempt ")},
 	{"@time=2848  :dan-!d@localhost  LIST \r\n",
 		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "LIST")},
 }
