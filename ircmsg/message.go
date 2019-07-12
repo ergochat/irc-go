@@ -155,6 +155,14 @@ func trimFinalNewlines(str string) string {
 	return str[:i+1]
 }
 
+// slice off any amount of ' ' from the front of the string
+func trimInitialSpaces(str string) string {
+	var i int
+	for i = 0; i < len(str) && str[i] == ' '; i += 1 {
+	}
+	return str[i:]
+}
+
 func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMessage, err error) {
 	if strings.IndexByte(line, '\x00') != -1 {
 		err = ErrorLineContainsBadChar
@@ -190,8 +198,12 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		line = line[:truncateLen]
 	}
 
+	// modern: "These message parts, and parameters themselves, are separated
+	// by one or more ASCII SPACE characters"
+	line = trimInitialSpaces(line)
+
 	// prefix
-	if line[0] == ':' {
+	if 0 < len(line) && line[0] == ':' {
 		prefixEnd := strings.IndexByte(line, ' ')
 		if prefixEnd == -1 {
 			return ircmsg, ErrorLineIsEmpty
@@ -200,6 +212,8 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		// skip over the prefix and the separating space
 		line = line[prefixEnd+1:]
 	}
+
+	line = trimInitialSpaces(line)
 
 	// command
 	commandEnd := strings.IndexByte(line, ' ')
@@ -215,7 +229,11 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 	}
 	line = line[paramStart:]
 
-	for 0 < len(line) {
+	for {
+		line = trimInitialSpaces(line)
+		if len(line) == 0 {
+			break
+		}
 		// handle trailing
 		if line[0] == ':' {
 			ircmsg.Params = append(ircmsg.Params, line[1:])
@@ -225,9 +243,6 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		if paramEnd == -1 {
 			ircmsg.Params = append(ircmsg.Params, line)
 			break
-		} else if paramEnd == 0 {
-			// only a trailing parameter can be empty
-			return ircmsg, ErrorLineContainsBadChar
 		}
 		ircmsg.Params = append(ircmsg.Params, line[:paramEnd])
 		line = line[paramEnd+1:]

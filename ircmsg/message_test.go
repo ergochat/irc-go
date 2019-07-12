@@ -61,8 +61,18 @@ var decodetests = []testcode{
 		MakeMessage(map[string]string{"+draft/test": "hi\nthere"}, "", "PING", "HiThere!")},
 	{"ping asdf\n",
 		MakeMessage(nil, "", "PING", "asdf")},
+	{"JoIN  #channel\n",
+		MakeMessage(nil, "", "JOIN", "#channel")},
+	{"@draft/label=l  join   #channel\n",
+		MakeMessage(map[string]string{"draft/label": "l"}, "", "JOIN", "#channel")},
 	{"list",
 		MakeMessage(nil, "", "LIST")},
+	{"list ",
+		MakeMessage(nil, "", "LIST")},
+	{"list  ",
+		MakeMessage(nil, "", "LIST")},
+	{"@time=2848  :dan-!d@localhost  LIST \r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "LIST")},
 }
 
 type testparseerror struct {
