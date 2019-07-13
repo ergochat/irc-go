@@ -147,12 +147,12 @@ func ParseLineStrict(line string, fromClient bool, truncateLen int) (ircmsg IrcM
 	return parseLine(line, maxTagDataLength, truncateLen)
 }
 
-// slice off any amount of '\r' or '\n' from the end of the string
-func trimFinalNewlines(str string) string {
+// slice off any amount of ' ' from the front of the string
+func trimInitialSpaces(str string) string {
 	var i int
-	for i = len(str) - 1; 0 <= i && (str[i] == '\r' || str[i] == '\n'); i -= 1 {
+	for i = 0; i < len(str) && str[i] == ' '; i += 1 {
 	}
-	return str[:i+1]
+	return str[i:]
 }
 
 func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMessage, err error) {
@@ -161,7 +161,15 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		return
 	}
 
-	line = trimFinalNewlines(line)
+	// trim to the first appearance of either '\r' or '\n':
+	lineEnd := strings.IndexByte(line, '\r')
+	newlineIndex := strings.IndexByte(line, '\n')
+	if newlineIndex != -1 && (lineEnd == -1 || newlineIndex < lineEnd) {
+		lineEnd = newlineIndex
+	}
+	if lineEnd != -1 {
+		line = line[:lineEnd]
+	}
 
 	if len(line) < 1 {
 		return ircmsg, ErrorLineIsEmpty
@@ -190,8 +198,12 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		line = line[:truncateLen]
 	}
 
+	// modern: "These message parts, and parameters themselves, are separated
+	// by one or more ASCII SPACE characters"
+	line = trimInitialSpaces(line)
+
 	// prefix
-	if line[0] == ':' {
+	if 0 < len(line) && line[0] == ':' {
 		prefixEnd := strings.IndexByte(line, ' ')
 		if prefixEnd == -1 {
 			return ircmsg, ErrorLineIsEmpty
@@ -201,6 +213,8 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		line = line[prefixEnd+1:]
 	}
 
+	line = trimInitialSpaces(line)
+
 	// command
 	commandEnd := strings.IndexByte(line, ' ')
 	paramStart := commandEnd + 1
@@ -209,13 +223,17 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		paramStart = len(line)
 	}
 	// normalize command to uppercase:
-	ircmsg.Command = strings.ToUpper(strings.TrimSpace(line[:commandEnd]))
+	ircmsg.Command = strings.ToUpper(line[:commandEnd])
 	if len(ircmsg.Command) == 0 {
 		return ircmsg, ErrorLineIsEmpty
 	}
 	line = line[paramStart:]
 
-	for 0 < len(line) {
+	for {
+		line = trimInitialSpaces(line)
+		if len(line) == 0 {
+			break
+		}
 		// handle trailing
 		if line[0] == ':' {
 			ircmsg.Params = append(ircmsg.Params, line[1:])
@@ -225,9 +243,6 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IrcMe
 		if paramEnd == -1 {
 			ircmsg.Params = append(ircmsg.Params, line)
 			break
-		} else if paramEnd == 0 {
-			// only a trailing parameter can be empty
-			return ircmsg, ErrorLineContainsBadChar
 		}
 		ircmsg.Params = append(ircmsg.Params, line[:paramEnd])
 		line = line[paramEnd+1:]
