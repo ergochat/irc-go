@@ -52,6 +52,7 @@ type IrcMessage struct {
 	Prefix         string
 	Command        string
 	Params         []string
+	ForceTrailing  bool
 	tags           map[string]string
 	clientOnlyTags map[string]string
 }
@@ -321,6 +322,10 @@ func (ircmsg *IrcMessage) LineBytesStrict(fromClient bool, truncateLen int) ([]b
 	return ircmsg.line(tagLimit, clientOnlyTagDataLimit, serverAddedTagDataLimit, truncateLen)
 }
 
+func paramRequiresTrailing(param string) bool {
+	return len(param) == 0 || strings.IndexByte(param, ' ') != -1 || param[0] == ':'
+}
+
 // line returns a sendable line created from an IrcMessage.
 func (ircmsg *IrcMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagDataLimit, truncateLen int) ([]byte, error) {
 	if len(ircmsg.Command) < 1 {
@@ -376,11 +381,11 @@ func (ircmsg *IrcMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagD
 
 	for i, param := range ircmsg.Params {
 		buf.WriteByte(' ')
-		if len(param) < 1 || strings.IndexByte(param, ' ') != -1 || param[0] == ':' {
-			if i != len(ircmsg.Params)-1 {
-				return nil, ErrorBadParam
-			}
+		requiresTrailing := paramRequiresTrailing(param)
+		if (requiresTrailing || ircmsg.ForceTrailing) && i == len(ircmsg.Params) - 1 {
 			buf.WriteByte(':')
+		} else if requiresTrailing && i != len(ircmsg.Params) - 1 {
+			return nil, ErrorBadParam
 		}
 		buf.WriteString(param)
 	}
