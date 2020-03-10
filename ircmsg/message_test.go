@@ -329,7 +329,7 @@ func TestForceTrailing(t *testing.T) {
 	if string(bytes) != ":shivaram PRIVMSG #darwin nice\r\n" {
 		t.Errorf("unexpected serialization: %s", bytes)
 	}
-	message.ForceTrailing = true
+	message.ForceTrailing()
 	bytes, err = message.LineBytesStrict(true, 0)
 	if err != nil {
 		t.Error(err)

@@ -52,9 +52,16 @@ type IrcMessage struct {
 	Prefix         string
 	Command        string
 	Params         []string
-	ForceTrailing  bool
+	forceTrailing  bool
 	tags           map[string]string
 	clientOnlyTags map[string]string
+}
+
+// ForceTrailing ensures that when the message is serialized, the final parameter
+// will be encoded as a "trailing parameter", i.e., preceded by a colon. This is
+// necessary for compatibility with incorrect implementations.
+func (msg *IrcMessage) ForceTrailing() {
+	msg.forceTrailing = true
 }
 
 // GetTag returns whether a tag is present, and if so, what its value is.
@@ -382,9 +389,10 @@ func (ircmsg *IrcMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagD
 	for i, param := range ircmsg.Params {
 		buf.WriteByte(' ')
 		requiresTrailing := paramRequiresTrailing(param)
-		if (requiresTrailing || ircmsg.ForceTrailing) && i == len(ircmsg.Params)-1 {
+		lastParam := i == len(ircmsg.Params)-1
+		if (requiresTrailing || ircmsg.forceTrailing) && lastParam {
 			buf.WriteByte(':')
-		} else if requiresTrailing && i != len(ircmsg.Params)-1 {
+		} else if requiresTrailing && !lastParam {
 			return nil, ErrorBadParam
 		}
 		buf.WriteString(param)
