@@ -317,10 +317,10 @@ func TestEncodeDecode(t *testing.T) {
 }
 
 func TestForceTrailing(t *testing.T) {
-	message := IrcMessage {
-		Prefix: "shivaram",
+	message := IrcMessage{
+		Prefix:  "shivaram",
 		Command: "PRIVMSG",
-		Params: []string{"#darwin", "nice"},
+		Params:  []string{"#darwin", "nice"},
 	}
 	bytes, err := message.LineBytesStrict(true, 0)
 	if err != nil {

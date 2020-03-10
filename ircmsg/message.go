@@ -382,9 +382,9 @@ func (ircmsg *IrcMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagD
 	for i, param := range ircmsg.Params {
 		buf.WriteByte(' ')
 		requiresTrailing := paramRequiresTrailing(param)
-		if (requiresTrailing || ircmsg.ForceTrailing) && i == len(ircmsg.Params) - 1 {
+		if (requiresTrailing || ircmsg.ForceTrailing) && i == len(ircmsg.Params)-1 {
 			buf.WriteByte(':')
-		} else if requiresTrailing && i != len(ircmsg.Params) - 1 {
+		} else if requiresTrailing && i != len(ircmsg.Params)-1 {
 			return nil, ErrorBadParam
 		}
 		buf.WriteString(param)
