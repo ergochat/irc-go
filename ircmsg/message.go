@@ -58,8 +58,9 @@ type IrcMessage struct {
 }
 
 // ForceTrailing ensures that when the message is serialized, the final parameter
-// will be encoded as a "trailing parameter", i.e., preceded by a colon. This is
-// necessary for compatibility with incorrect implementations.
+// will be encoded as a "trailing parameter" (preceded by a colon). This is
+// almost never necessary and should not be used except when having to interact
+// with broken implementations that don't correctly interpret IRC messages.
 func (msg *IrcMessage) ForceTrailing() {
 	msg.forceTrailing = true
 }
