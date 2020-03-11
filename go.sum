@@ -1,0 +1,7 @@
+github.com/DanielOaks/go-idn v0.0.0-20160120021903-76db0e10dc65 h1:DXLz23jPaNHJ0okNtScVpSVa87hwQHstIgnMUkaVIck=
+github.com/DanielOaks/go-idn v0.0.0-20160120021903-76db0e10dc65/go.mod h1:GYIaL2hleNQvfMUBTes1Zd/lDTyI/p2hv3kYB4jssyU=
+github.com/goshuirc/e-nfa v0.0.0-20160917075329-7071788e3940 h1:KmRLPRstEJiE/9OjumKqI8Rccip8Qmyw2FwyTFxtVqs=
+github.com/goshuirc/e-nfa v0.0.0-20160917075329-7071788e3940/go.mod h1:VOmrX6cmj7zwUeexC9HzznUdTIObHqIXUrWNYS+Ik7w=
+golang.org/x/text v0.3.2 h1:tW2bmiBqwgJj/UpqtC8EpXEZVYOwU0yG4iWbprSVAcs=
+golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=

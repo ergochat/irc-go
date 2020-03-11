@@ -316,6 +316,29 @@ func TestEncodeDecode(t *testing.T) {
 	}
 }
 
+func TestForceTrailing(t *testing.T) {
+	message := IrcMessage{
+		Prefix:  "shivaram",
+		Command: "PRIVMSG",
+		Params:  []string{"#darwin", "nice"},
+	}
+	bytes, err := message.LineBytesStrict(true, 0)
+	if err != nil {
+		t.Error(err)
+	}
+	if string(bytes) != ":shivaram PRIVMSG #darwin nice\r\n" {
+		t.Errorf("unexpected serialization: %s", bytes)
+	}
+	message.ForceTrailing()
+	bytes, err = message.LineBytesStrict(true, 0)
+	if err != nil {
+		t.Error(err)
+	}
+	if string(bytes) != ":shivaram PRIVMSG #darwin :nice\r\n" {
+		t.Errorf("unexpected serialization: %s", bytes)
+	}
+}
+
 func TestErrorLineTooLongGeneration(t *testing.T) {
 	message := IrcMessage{
 		tags:    map[string]string{"draft/msgid": "SAXV5OYJUr18CNJzdWa1qQ"},
