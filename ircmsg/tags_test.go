@@ -92,14 +92,14 @@ var tagdecodetests = []testtags{
 	{"time=12732;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
 	{"time=12732;draft/label=b;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678", "draft/label": "b"}},
 	{"=these;time=12732;=shouldbe;re=;asdf=5678;=ignored", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
-	{"dolphin=🐬;time=123456", map[string]string{"dolphin": "🐬", "time": "123456",}},
-	{"+dolphin=🐬;+draft/fox=f🦊x", map[string]string{"+dolphin": "🐬", "+draft/fox": "f🦊x",}},
-	{"+dolphin=🐬;+draft/f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
-	{"+dolphin=🐬;+f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
-	{"+dolphin=🐬;f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
-	{"dolphin=🐬;f🦊x=fox", map[string]string{"dolphin": "🐬",}},
-	{"f🦊x=fox;+oragono.io/dolphin=🐬", map[string]string{"+oragono.io/dolphin": "🐬",}},
-	{"a=b;\\/=.", map[string]string{"a": "b",}},
+	{"dolphin=🐬;time=123456", map[string]string{"dolphin": "🐬", "time": "123456"}},
+	{"+dolphin=🐬;+draft/fox=f🦊x", map[string]string{"+dolphin": "🐬", "+draft/fox": "f🦊x"}},
+	{"+dolphin=🐬;+draft/f🦊x=fox", map[string]string{"+dolphin": "🐬"}},
+	{"+dolphin=🐬;+f🦊x=fox", map[string]string{"+dolphin": "🐬"}},
+	{"+dolphin=🐬;f🦊x=fox", map[string]string{"+dolphin": "🐬"}},
+	{"dolphin=🐬;f🦊x=fox", map[string]string{"dolphin": "🐬"}},
+	{"f🦊x=fox;+oragono.io/dolphin=🐬", map[string]string{"+oragono.io/dolphin": "🐬"}},
+	{"a=b;\\/=.", map[string]string{"a": "b"}},
 }
 
 func parseTags(rawTags string) (map[string]string, error) {
