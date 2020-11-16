@@ -71,6 +71,15 @@ func TestUnescape(t *testing.T) {
 	}
 }
 
+func TestValidateTagName(t *testing.T) {
+	if !validateTagName("c") {
+		t.Error("c is valid")
+	}
+	if validateTagName("a_b") {
+		t.Error("a_b is invalid")
+	}
+}
+
 // tag string tests
 type testtags struct {
 	raw  string
@@ -81,7 +90,16 @@ var tagdecodetests = []testtags{
 	{"", map[string]string{}},
 	{"time=12732;re", map[string]string{"time": "12732", "re": ""}},
 	{"time=12732;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
+	{"time=12732;draft/label=b;re=;asdf=5678", map[string]string{"time": "12732", "re": "", "asdf": "5678", "draft/label": "b"}},
 	{"=these;time=12732;=shouldbe;re=;asdf=5678;=ignored", map[string]string{"time": "12732", "re": "", "asdf": "5678"}},
+	{"dolphin=🐬;time=123456", map[string]string{"dolphin": "🐬", "time": "123456",}},
+	{"+dolphin=🐬;+draft/fox=f🦊x", map[string]string{"+dolphin": "🐬", "+draft/fox": "f🦊x",}},
+	{"+dolphin=🐬;+draft/f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
+	{"+dolphin=🐬;+f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
+	{"+dolphin=🐬;f🦊x=fox", map[string]string{"+dolphin": "🐬",}},
+	{"dolphin=🐬;f🦊x=fox", map[string]string{"dolphin": "🐬",}},
+	{"f🦊x=fox;+oragono.io/dolphin=🐬", map[string]string{"+oragono.io/dolphin": "🐬",}},
+	{"a=b;\\/=.", map[string]string{"a": "b",}},
 }
 
 func parseTags(rawTags string) (map[string]string, error) {
@@ -105,6 +123,24 @@ func TestDecodeTags(t *testing.T) {
 				"expected", pair.tags,
 				"got", tags,
 			)
+		}
+	}
+}
+
+var invalidtagdatatests = []string{
+	"label=\xff;batch=c",
+	"label=a\xffb;batch=c",
+	"label=a\xffb",
+	"label=a\xff",
+	"label=a\xff",
+	"label=a\xf0a",
+}
+
+func TestTagInvalidUtf8(t *testing.T) {
+	for _, tags := range invalidtagdatatests {
+		_, err := ParseLineStrict(fmt.Sprintf("@%s PRIVMSG #chan hi\r\n", tags), true, 0)
+		if err != ErrorInvalidTagContent {
+			t.Errorf("")
 		}
 	}
 }
