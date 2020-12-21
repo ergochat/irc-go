@@ -28,6 +28,9 @@ var unescapetests = []testcase{
 	{"te$xt", "text"},
 	{"te$st", "te\x1et"},
 	{"test$c", "test\x03"},
+	{"te$c[red velvet", "te\x03[red velvet"},
+	{"test$c[light blue,black]asdf", "test\x0312,1asdf"},
+	{"test$c[light blue, black]asdf", "test\x0312,1asdf"},
 }
 
 var stripTests = []testcase{

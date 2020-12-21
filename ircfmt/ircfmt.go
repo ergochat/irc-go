@@ -4,6 +4,7 @@
 package ircfmt
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -81,26 +82,6 @@ var (
 		"0":  "white",
 	}
 
-	// full and truncated colour codes
-	colourcodesFull = map[string]string{
-		"white":       "00",
-		"black":       "01",
-		"blue":        "02",
-		"green":       "03",
-		"red":         "04",
-		"brown":       "05",
-		"magenta":     "06",
-		"orange":      "07",
-		"yellow":      "08",
-		"light green": "09",
-		"cyan":        "10",
-		"light cyan":  "11",
-		"light blue":  "12",
-		"pink":        "13",
-		"grey":        "14",
-		"light grey":  "15",
-		"default":     "99",
-	}
 	colourcodesTruncated = map[string]string{
 		"white":       "0",
 		"black":       "1",
@@ -120,6 +101,8 @@ var (
 		"light grey":  "15",
 		"default":     "99",
 	}
+
+	bracketedColorCode = regexp.MustCompile(`^\[[A-Za-z0-9, ]*\]`)
 )
 
 // Escape takes a raw IRC string and returns it with our escapes.
@@ -242,87 +225,79 @@ func removeColour(runes []rune) []rune {
 	return runes
 }
 
+func normalizeColour(colour string) (result string) {
+	return strings.ToLower(strings.TrimSpace(colour))
+}
+
 // Unescape takes our escaped string and returns a raw IRC string.
 //
 // IE, it turns this: "This is a $bcool$b, $c[red]red$r message!"
 // into this: "This is a \x02cool\x02, \x034red\x0f message!"
 func Unescape(in string) string {
-	out := strings.Builder{}
+	var out strings.Builder
 
-	remaining := []rune(in)
-	for 0 < len(remaining) {
+	remaining := in
+	for len(remaining) != 0 {
 		char := remaining[0]
 		remaining = remaining[1:]
 
-		if char == '$' && 0 < len(remaining) {
-			char = remaining[0]
-			remaining = remaining[1:]
+		if char != '$' || len(remaining) == 0 {
+			// not an escape
+			out.WriteByte(char)
+			continue
+		}
 
-			val, exists := escapetoval[char]
-			if exists {
-				out.WriteString(val)
-			} else if char == 'c' {
-				out.WriteString(colour)
+		// ingest the next character of the escape
+		char = remaining[0]
+		remaining = remaining[1:]
 
-				if len(remaining) < 2 || remaining[0] != '[' {
-					continue
-				}
+		if char == 'c' {
+			out.WriteString(colour)
 
-				// get colour names
-				var coloursBuffer string
-				remaining = remaining[1:]
-				for remaining[0] != ']' {
-					coloursBuffer += string(remaining[0])
-					remaining = remaining[1:]
-				}
-				remaining = remaining[1:] // strip final ']'
+			namedColors := bracketedColorCode.FindString(remaining)
+			if namedColors == "" {
+				// for a non-bracketed color code, output the following characters directly,
+				// e.g., `$c1,8` will become `\x031,8`
+				continue
+			}
+			// process bracketed color codes:
+			remaining = remaining[len(namedColors):]
+			// cut off the brackets
+			namedColors = namedColors[1 : len(namedColors)-1]
 
-				colours := strings.Split(coloursBuffer, ",")
-				var foreColour, backColour string
-				foreColour = colours[0]
-				if 1 < len(colours) {
-					backColour = colours[1]
-				}
-
-				// decide whether we can use truncated colour codes
-				canUseTruncated := len(remaining) < 1 || !strings.Contains(colours1, string(remaining[0]))
-
-				// turn colour names into real codes
-				var foreColourCode, backColourCode string
-				var exists bool
-
-				if backColour != "" || canUseTruncated {
-					foreColourCode, exists = colourcodesTruncated[foreColour]
-				} else {
-					foreColourCode, exists = colourcodesFull[foreColour]
-				}
-				if exists {
-					foreColour = foreColourCode
-				}
-
-				if backColour != "" {
-					if canUseTruncated {
-						backColourCode, exists = colourcodesTruncated[backColour]
-					} else {
-						backColourCode, exists = colourcodesFull[backColour]
-					}
-					if exists {
-						backColour = backColourCode
-					}
-				}
-
-				// output colour codes
-				out.WriteString(foreColour)
-				if backColour != "" {
-					out.WriteRune(',')
-					out.WriteString(backColour)
-				}
+			followedByDigit := len(remaining) != 0 && ('0' <= remaining[0] && remaining[0] <= '9')
+			var foregroundStr, backgroundStr string
+			commaIdx := strings.IndexByte(namedColors, ',')
+			if commaIdx != -1 {
+				foregroundStr = namedColors[:commaIdx]
+				backgroundStr = namedColors[commaIdx+1:]
 			} else {
-				// unknown char
-				out.WriteRune(char)
+				foregroundStr = namedColors
+			}
+
+			foreground := colourcodesTruncated[normalizeColour(foregroundStr)]
+			background := colourcodesTruncated[normalizeColour(backgroundStr)]
+			if foreground != "" {
+				if len(foreground) == 1 && background == "" && followedByDigit {
+					out.WriteByte('0')
+				}
+				out.WriteString(foreground)
+				if background != "" {
+					out.WriteByte(',')
+					if len(background) == 1 && followedByDigit {
+						out.WriteByte('0')
+					}
+					out.WriteString(background)
+				}
 			}
 		} else {
-			out.WriteRune(char)
+			val, exists := escapetoval[rune(char)]
+			if exists {
+				out.WriteString(val)
+			} else {
+				// invalid escape, use the raw char
+				out.WriteByte(char)
+			}
 		}
 	}
 
