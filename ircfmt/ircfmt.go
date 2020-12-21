@@ -102,7 +102,8 @@ var (
 		"default":     "99",
 	}
 
-	bracketedColorCode = regexp.MustCompile(`^\[[A-Za-z0-9, ]*\]`)
+	bracketedExpr = regexp.MustCompile(`^\[.*\]`)
+	colourDigits  = regexp.MustCompile(`^[0-9]{1,2}$`)
 )
 
 // Escape takes a raw IRC string and returns it with our escapes.
@@ -225,8 +226,31 @@ func removeColour(runes []rune) []rune {
 	return runes
 }
 
-func normalizeColour(colour string) (result string) {
-	return strings.ToLower(strings.TrimSpace(colour))
+// resolve "light blue" to "12", "12" to "12", "asdf" to "", etc.
+func resolveToColourCode(str string) (result string) {
+	str = strings.ToLower(strings.TrimSpace(str))
+	if colourDigits.MatchString(str) {
+		return str
+	}
+	return colourcodesTruncated[str]
+}
+
+// resolve "[light blue, black]" to ("13, "1")
+func resolveToColourCodes(namedColors string) (foreground, background string) {
+	// cut off the brackets
+	namedColors = strings.TrimPrefix(namedColors, "[")
+	namedColors = strings.TrimSuffix(namedColors, "]")
+
+	var foregroundStr, backgroundStr string
+	commaIdx := strings.IndexByte(namedColors, ',')
+	if commaIdx != -1 {
+		foregroundStr = namedColors[:commaIdx]
+		backgroundStr = namedColors[commaIdx+1:]
+	} else {
+		foregroundStr = namedColors
+	}
+
+	return resolveToColourCode(foregroundStr), resolveToColourCode(backgroundStr)
 }
 
 // Unescape takes our escaped string and returns a raw IRC string.
@@ -254,7 +278,7 @@ func Unescape(in string) string {
 		if char == 'c' {
 			out.WriteString(colour)
 
-			namedColors := bracketedColorCode.FindString(remaining)
+			namedColors := bracketedExpr.FindString(remaining)
 			if namedColors == "" {
 				// for a non-bracketed color code, output the following characters directly,
 				// e.g., `$c1,8` will become `\x031,8`
@@ -262,21 +286,9 @@ func Unescape(in string) string {
 			}
 			// process bracketed color codes:
 			remaining = remaining[len(namedColors):]
-			// cut off the brackets
-			namedColors = namedColors[1 : len(namedColors)-1]
-
 			followedByDigit := len(remaining) != 0 && ('0' <= remaining[0] && remaining[0] <= '9')
-			var foregroundStr, backgroundStr string
-			commaIdx := strings.IndexByte(namedColors, ',')
-			if commaIdx != -1 {
-				foregroundStr = namedColors[:commaIdx]
-				backgroundStr = namedColors[commaIdx+1:]
-			} else {
-				foregroundStr = namedColors
-			}
 
-			foreground := colourcodesTruncated[normalizeColour(foregroundStr)]
-			background := colourcodesTruncated[normalizeColour(backgroundStr)]
+			foreground, background := resolveToColourCodes(namedColors)
 			if foreground != "" {
 				if len(foreground) == 1 && background == "" && followedByDigit {
 					out.WriteByte('0')

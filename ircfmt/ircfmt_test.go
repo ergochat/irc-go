@@ -29,8 +29,15 @@ var unescapetests = []testcase{
 	{"te$st", "te\x1et"},
 	{"test$c", "test\x03"},
 	{"te$c[red velvet", "te\x03[red velvet"},
+	{"te$c[[red velvet", "te\x03[[red velvet"},
 	{"test$c[light blue,black]asdf", "test\x0312,1asdf"},
 	{"test$c[light blue, black]asdf", "test\x0312,1asdf"},
+	{"te$c[4,3]st", "te\x034,3st"},
+	{"te$c[4]1st", "te\x03041st"},
+	{"te$c[4,3]9st", "te\x034,039st"},
+	{"te$c[04,03]9st", "te\x0304,039st"},
+	{"te$c[asdf   !23a fd4*#]st", "te\x03st"},
+	{"te$c[asdf  , !2,3a fd4*#]st", "te\x03st"},
 }
 
 var stripTests = []testcase{
