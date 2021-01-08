@@ -38,6 +38,7 @@ var unescapetests = []testcase{
 	{"te$c[04,03]9st", "te\x0304,039st"},
 	{"te$c[asdf   !23a fd4*#]st", "te\x03st"},
 	{"te$c[asdf  , !2,3a fd4*#]st", "te\x03st"},
+	{"Client opered up $c[grey][$r%s$c[grey], $r%s$c[grey]]", "Client opered up \x0314[\x0f%s\x0314, \x0f%s\x0314]"},
 }
 
 var stripTests = []testcase{
