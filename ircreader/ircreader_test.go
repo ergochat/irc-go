@@ -1,7 +1,7 @@
 // Copyright (c) 2020 Shivaram Lingamneni <slingamn@cs.stanford.edu>
 // released under the MIT license
 
-package irc
+package ircreader
 
 import (
 	"io"
