@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# exclude vendor/
 SOURCES="."
+
+if [ "$1" = "--fix" ]; then
+	exec gofmt -s -w $SOURCES
+fi
 
 if [ -n "$(gofmt -s -l $SOURCES)" ]; then
     echo "Go code is not formatted correctly with \`gofmt -s\`:"
