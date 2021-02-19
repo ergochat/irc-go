@@ -217,7 +217,7 @@ func (irc *Connection) processTick(tick int) {
 		return
 	}
 	pingModulus := int(irc.KeepAlive / irc.Timeout)
-	if tick % pingModulus == 0 {
+	if tick%pingModulus == 0 {
 		shouldPing = true
 		irc.pingSent = true
 		if irc.currentNick != irc.Nick {
@@ -664,7 +664,7 @@ func (irc *Connection) negotiateCaps() error {
 		case <-timer.C:
 			// The server probably doesn't implement CAP LS, which is "normal".
 			return nil
-		case <- irc.end:
+		case <-irc.end:
 			return ServerDisconnected
 		}
 	}
@@ -678,7 +678,7 @@ func (irc *Connection) negotiateCaps() error {
 		case <-time.After(CAPTimeout):
 			// Raise an error if we can't authenticate with SASL.
 			return SASLFailed
-		case <- irc.end:
+		case <-irc.end:
 			return ServerDisconnected
 		}
 	}
