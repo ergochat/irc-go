@@ -3,23 +3,22 @@
 // license that can be found in the LICENSE file.
 
 /*
-This package provides an event based IRC client library. It allows to
-register callbacks for the events you need to handle. Its features
-include handling standard CTCP, reconnecting on errors and detecting
-stones servers.
-Details of the IRC protocol can be found in the following RFCs:
-https://tools.ietf.org/html/rfc1459
-https://tools.ietf.org/html/rfc2810
-https://tools.ietf.org/html/rfc2811
-https://tools.ietf.org/html/rfc2812
-https://tools.ietf.org/html/rfc2813
-The details of the client-to-client protocol (CTCP) can be found here: http://www.irchelp.org/irchelp/rfc/ctcpspec.html
+Here's the concurrency design of this project (largely unchanged from thoj/go-ircevent):
+Connect() spawns 3 goroutines (readLoop, writeLoop, pingLoop). The client then
+calls Loop(), which monitors their state. Loop() will wait for them
+to make a clean stop and then run another Connect(). The system can be
+interrupted asynchronously by sending a message, e.g, with Privmsg(), or by
+calling Reconnect() (which disconnects and forces a reconnection), or by calling
+Quit(), which sends QUIT to the server and will eventually stop the Loop().
+
+The stop mechanism is to close the (*Connection).end channel (which is only closed,
+never sent-on normally), so every blocking operation in the 3 loops must also
+select on `end` to make sure it stops in a timely fashion.
 */
 
-package irc
+package ircevent
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"errors"
@@ -31,466 +30,585 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/text/encoding"
+	"github.com/goshuirc/irc-go/ircmsg"
+	"github.com/goshuirc/irc-go/ircreader"
 )
 
 const (
-	VERSION = "go-ircevent v2.1"
+	Version = "goshuirc/irc-go"
+
+	// prefix for keepalive ping parameters
+	keepalivePrefix = "KeepAlive-"
+
+	maxlenTags = 8192
+
+	writeQueueSize = 10
+
+	defaultNick = "ircevent"
+
+	CAPTimeout = time.Second * 15
 )
 
-const CAP_TIMEOUT = time.Second * 15
+var (
+	ClientDisconnected = errors.New("Could not send because client is disconnected")
+	ServerTimedOut     = errors.New("Server did not respond in time")
+	ServerDisconnected = errors.New("Disconnected by server")
+	SASLFailed         = errors.New("SASL setup timed out. Does the server support SASL?")
 
-var ErrDisconnected = errors.New("Disconnect Called")
+	serverDidNotQuit = errors.New("server did not respond to QUIT")
+	clientHasQuit    = errors.New("client has called Quit()")
+)
+
+// Call this on an error forcing a disconnection:
+// record the error, then close the `end` channel, stopping all goroutines
+func (irc *Connection) setError(err error) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	if irc.lastError == nil {
+		irc.lastError = err
+		irc.closeEndNoMutex()
+	}
+}
+
+func (irc *Connection) getError() error {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.lastError
+}
+
+// Send a keepalive PING in our timestamp-based format
+func (irc *Connection) ping() {
+	param := fmt.Sprintf("%s%d", keepalivePrefix, time.Now().UnixNano())
+	irc.Send("PING", param)
+}
+
+// Interpret the PONG from a keepalive ping
+func (irc *Connection) recordPong(param string) {
+	ts := strings.TrimPrefix(param, keepalivePrefix)
+	if ts == param {
+		return
+	}
+	t, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return
+	}
+	if irc.Debug {
+		pong := time.Unix(0, t)
+		irc.Log.Printf("Lag: %v\n", time.Since(pong))
+	}
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.pingSent = false
+}
 
 // Read data from a connection. To be used as a goroutine.
 func (irc *Connection) readLoop() {
-	defer irc.Done()
-	r := irc.Encoding.NewDecoder().Reader(irc.socket)
-	br := bufio.NewReaderSize(r, 512)
+	defer irc.wg.Done()
 
-	errChan := irc.ErrorChan()
+	msgChan := make(chan string)
+	errChan := make(chan error)
+	go readMsgLoop(irc.socket, irc.MaxLineLen, msgChan, errChan, irc.end)
 
 	for {
 		select {
 		case <-irc.end:
 			return
-		default:
-			// Set a read deadline based on the combined timeout and ping frequency
-			// We should ALWAYS have received a response from the server within the timeout
-			// after our own pings
-			if irc.socket != nil {
-				irc.socket.SetReadDeadline(time.Now().Add(irc.Timeout + irc.PingFreq))
-			}
-
-			msg, err := br.ReadString('\n')
-
-			// We got past our blocking read, so bin timeout
-			if irc.socket != nil {
-				var zero time.Time
-				irc.socket.SetReadDeadline(zero)
-			}
-
-			if err != nil {
-				errChan <- err
-				return
-			}
-
+		case msg := <-msgChan:
 			if irc.Debug {
 				irc.Log.Printf("<-- %s\n", strings.TrimSpace(msg))
 			}
 
-			irc.lastMessageMutex.Lock()
-			irc.lastMessage = time.Now()
-			irc.lastMessageMutex.Unlock()
-			event, err := parseToEvent(msg)
+			parsedMsg, err := ircmsg.ParseLine(msg)
 			if err == nil {
-				event.Connection = irc
-				irc.RunCallbacks(event)
+				irc.runCallbacks(parsedMsg)
+			} else {
+				irc.Log.Printf("invalid message from server: %v\n", err)
 			}
+		case err := <-errChan:
+			irc.setError(err)
+			return
 		}
 	}
 }
 
-// Unescape tag values as defined in the IRCv3.2 message tags spec
-// http://ircv3.net/specs/core/message-tags-3.2.html
-func unescapeTagValue(value string) string {
-	value = strings.Replace(value, "\\:", ";", -1)
-	value = strings.Replace(value, "\\s", " ", -1)
-	value = strings.Replace(value, "\\\\", "\\", -1)
-	value = strings.Replace(value, "\\r", "\r", -1)
-	value = strings.Replace(value, "\\n", "\n", -1)
-	return value
-}
-
-//Parse raw irc messages
-func parseToEvent(msg string) (*Event, error) {
-	msg = strings.TrimSuffix(msg, "\n") //Remove \r\n
-	msg = strings.TrimSuffix(msg, "\r")
-	event := &Event{Raw: msg}
-	if len(msg) < 5 {
-		return nil, errors.New("Malformed msg from server")
-	}
-
-	if msg[0] == '@' {
-		// IRCv3 Message Tags
-		if i := strings.Index(msg, " "); i > -1 {
-			event.Tags = make(map[string]string)
-			tags := strings.Split(msg[1:i], ";")
-			for _, data := range tags {
-				parts := strings.SplitN(data, "=", 2)
-				if len(parts) == 1 {
-					event.Tags[parts[0]] = ""
-				} else {
-					event.Tags[parts[0]] = unescapeTagValue(parts[1])
-				}
+func readMsgLoop(socket net.Conn, maxLineLen int, msgChan chan string, errChan chan error, end chan empty) {
+	var reader ircreader.IRCReader
+	reader.Initialize(socket, 1024, maxLineLen+maxlenTags)
+	for {
+		msgBytes, err := reader.ReadLine()
+		if err == nil {
+			select {
+			case msgChan <- string(msgBytes):
+			case <-end:
+				return
 			}
-			msg = msg[i+1 : len(msg)]
 		} else {
-			return nil, errors.New("Malformed msg from server")
+			select {
+			case errChan <- err:
+			case <-end:
+			}
+			return
 		}
 	}
-
-	if msg[0] == ':' {
-		if i := strings.Index(msg, " "); i > -1 {
-			event.Source = msg[1:i]
-			msg = msg[i+1 : len(msg)]
-
-		} else {
-			return nil, errors.New("Malformed msg from server")
-		}
-
-		if i, j := strings.Index(event.Source, "!"), strings.Index(event.Source, "@"); i > -1 && j > -1 && i < j {
-			event.Nick = event.Source[0:i]
-			event.User = event.Source[i+1 : j]
-			event.Host = event.Source[j+1 : len(event.Source)]
-		}
-	}
-
-	split := strings.SplitN(msg, " :", 2)
-	args := strings.Split(split[0], " ")
-	event.Code = strings.ToUpper(args[0])
-	event.Arguments = args[1:]
-	if len(split) > 1 {
-		event.Arguments = append(event.Arguments, split[1])
-	}
-	return event, nil
-
 }
 
 // Loop to write to a connection. To be used as a goroutine.
 func (irc *Connection) writeLoop() {
-	defer irc.Done()
-	w := irc.Encoding.NewEncoder().Writer(irc.socket)
-	errChan := irc.ErrorChan()
+	defer irc.wg.Done()
+
 	for {
 		select {
 		case <-irc.end:
 			return
-		case b, ok := <-irc.pwrite:
-			if !ok || b == "" || irc.socket == nil {
-				return
+		case b := <-irc.pwrite:
+			if len(b) == 0 {
+				continue
 			}
 
 			if irc.Debug {
-				irc.Log.Printf("--> %s\n", strings.TrimSpace(b))
+				irc.Log.Printf("--> %s\n", bytes.TrimSpace(b))
 			}
 
-			// Set a write deadline based on the time out
-			irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
-
-			_, err := w.Write([]byte(b))
-
-			// Past blocking write, bin timeout
-			var zero time.Time
-			irc.socket.SetWriteDeadline(zero)
-
+			if irc.Timeout != 0 {
+				irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
+			}
+			_, err := irc.socket.Write(b)
+			if irc.Timeout != 0 {
+				irc.socket.SetWriteDeadline(time.Time{})
+			}
 			if err != nil {
-				errChan <- err
+				irc.setError(err)
 				return
 			}
 		}
 	}
 }
 
-// Pings the server if we have not received any messages for 5 minutes
-// to keep the connection alive. To be used as a goroutine.
+// check the status of the connection and take appropriate action
+func (irc *Connection) processTick(tick int) {
+	var err error
+	var shouldPing, shouldRenick bool
+
+	defer func() {
+		if err != nil {
+			irc.setError(err)
+			return
+		}
+		if shouldPing {
+			irc.ping()
+		}
+		if shouldRenick {
+			irc.Send("NICK", irc.PreferredNick())
+		}
+	}()
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	// XXX: handle the server ignoring QUIT
+	if irc.quit && time.Since(irc.quitAt) >= irc.Timeout {
+		err = serverDidNotQuit
+		return
+	}
+	if irc.pingSent {
+		// unacked PING is fatal
+		err = ServerTimedOut
+		return
+	}
+	pingModulus := int(irc.KeepAlive / irc.Timeout)
+	if tick % pingModulus == 0 {
+		shouldPing = true
+		irc.pingSent = true
+		if irc.currentNick != irc.Nick {
+			shouldRenick = true
+		}
+	}
+	return
+}
+
+// handles all periodic tasks for the connection:
+// 1. sending PING approximately every KeepAlive seconds, monitoring for PONG
+// 2. fixing up NICK if we didn't get our preferred one
 func (irc *Connection) pingLoop() {
-	defer irc.Done()
-	ticker := time.NewTicker(1 * time.Minute) // Tick every minute for monitoring
-	ticker2 := time.NewTicker(irc.PingFreq)   // Tick at the ping frequency.
+	ticker := time.NewTicker(irc.Timeout)
+
+	defer func() {
+		irc.wg.Done()
+		ticker.Stop()
+	}()
+
+	tick := 0
 	for {
 		select {
-		case <-ticker.C:
-			//Ping if we haven't received anything from the server within the keep alive period
-			irc.lastMessageMutex.Lock()
-			if time.Since(irc.lastMessage) >= irc.KeepAlive {
-				irc.SendRawf("PING %d", time.Now().UnixNano())
-			}
-			irc.lastMessageMutex.Unlock()
-		case <-ticker2.C:
-			//Ping at the ping frequency
-			irc.SendRawf("PING %d", time.Now().UnixNano())
-			//Try to recapture nickname if it's not as configured.
-			irc.Lock()
-			if irc.nick != irc.nickcurrent {
-				irc.nickcurrent = irc.nick
-				irc.SendRawf("NICK %s", irc.nick)
-			}
-			irc.Unlock()
 		case <-irc.end:
-			ticker.Stop()
-			ticker2.Stop()
 			return
+		case <-ticker.C:
+			tick++
+			irc.processTick(tick)
 		}
 	}
 }
 
 func (irc *Connection) isQuitting() bool {
-	irc.Lock()
-	defer irc.Unlock()
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
 	return irc.quit
 }
 
 // Main loop to control the connection.
 func (irc *Connection) Loop() {
-	errChan := irc.ErrorChan()
-	for !irc.isQuitting() {
-		err := <-errChan
-		if irc.end != nil {
-			close(irc.end)
-		}
-		irc.Wait()
-		for !irc.isQuitting() {
+	var lastReconnect time.Time
+	for {
+		irc.waitForStop()
+
+		if err := irc.getError(); err != nil {
 			irc.Log.Printf("Error, disconnected: %s\n", err)
-			if err = irc.Reconnect(); err != nil {
-				irc.Log.Printf("Error while reconnecting: %s\n", err)
-				time.Sleep(60 * time.Second)
-			} else {
-				errChan = irc.ErrorChan()
-				break
-			}
 		}
+
+		if irc.isQuitting() {
+			return
+		}
+
+		delay := time.Until(lastReconnect.Add(irc.ReconnectFreq))
+		if delay > 0 {
+			if irc.Debug {
+				irc.Log.Printf("Waiting %v to reconnect", delay)
+			}
+			time.Sleep(delay)
+		}
+
+		lastReconnect = time.Now()
+		err := irc.Connect()
+		if err != nil {
+			// we are still stopped, the stop checks will return immediately
+			irc.Log.Printf("Error while reconnecting: %s\n", err)
+		}
+	}
+}
+
+// wait for all goroutines to stop. XXX: this is not safe for concurrent
+// use, call only from Connect() and Loop() (which will be on the same
+// client goroutine)
+func (irc *Connection) waitForStop() {
+	<-irc.end
+	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
+
+	if irc.socket != nil {
+		irc.socket.Close()
 	}
 }
 
 // Quit the current connection and disconnect from the server
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.6
 func (irc *Connection) Quit() {
-	quit := "QUIT"
-
-	if irc.QuitMessage != "" {
-		quit = fmt.Sprintf("QUIT :%s", irc.QuitMessage)
+	quitMessage := irc.QuitMessage
+	if quitMessage == "" {
+		quitMessage = irc.Version
 	}
 
-	irc.SendRaw(quit)
-	irc.Lock()
-	irc.stopped = true
+	now := time.Now()
+	irc.stateMutex.Lock()
 	irc.quit = true
-	irc.Unlock()
+	irc.quitAt = now
+	irc.stateMutex.Unlock()
+
+	// the server will respond to this by closing our connection;
+	// if it doesn't, pingLoop will eventually notice and close it
+	irc.Send("QUIT", quitMessage)
+}
+
+func (irc *Connection) sendInternal(b []byte) (err error) {
+	// XXX ensure that (end, pwrite) are from the same instantiation of Connect;
+	// invocations of this function from callbacks originating in readLoop
+	// do not need this synchronization (indeed they cannot occur at a time when
+	// `end` is closed), but invocations from outside do (even though the race window
+	// is very small).
+	irc.stateMutex.Lock()
+	end := irc.end
+	pwrite := irc.pwrite
+	irc.stateMutex.Unlock()
+
+	select {
+	case pwrite <- b:
+		return nil
+	case <-end:
+		return ClientDisconnected
+	}
+}
+
+// Send a built ircmsg.IRCMessage.
+func (irc *Connection) SendIRCMessage(msg ircmsg.IRCMessage) error {
+	b, err := msg.LineBytesStrict(true, irc.MaxLineLen)
+	if err != nil {
+		if irc.Debug {
+			irc.Log.Printf("couldn't assemble message: %v\n", err)
+		}
+		return err
+	}
+	return irc.sendInternal(b)
+}
+
+// Send an IRC message with tags.
+func (irc *Connection) SendWithTags(tags map[string]string, command string, params ...string) error {
+	return irc.SendIRCMessage(ircmsg.MakeMessage(tags, "", command, params...))
+}
+
+// Send an IRC message without tags.
+func (irc *Connection) Send(command string, params ...string) error {
+	return irc.SendWithTags(nil, command, params...)
+}
+
+// Send a raw string.
+func (irc *Connection) SendRaw(message string) error {
+	mlen := len(message)
+	buf := make([]byte, mlen+2)
+	copy(buf[:mlen], message[:])
+	copy(buf[mlen:], "\r\n")
+	return irc.sendInternal(buf)
 }
 
 // Use the connection to join a given channel.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.1
-func (irc *Connection) Join(channel string) {
-	irc.pwrite <- fmt.Sprintf("JOIN %s\r\n", channel)
+func (irc *Connection) Join(channel string) error {
+	return irc.Send("JOIN", channel)
 }
 
 // Leave a given channel.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.2
-func (irc *Connection) Part(channel string) {
-	irc.pwrite <- fmt.Sprintf("PART %s\r\n", channel)
+func (irc *Connection) Part(channel string) error {
+	return irc.Send("PART", channel)
 }
 
 // Send a notification to a nickname. This is similar to Privmsg but must not receive replies.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.2
-func (irc *Connection) Notice(target, message string) {
-	irc.pwrite <- fmt.Sprintf("NOTICE %s :%s\r\n", target, message)
+func (irc *Connection) Notice(target, message string) error {
+	return irc.Send("NOTICE", target, message)
 }
 
 // Send a formated notification to a nickname.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.2
-func (irc *Connection) Noticef(target, format string, a ...interface{}) {
-	irc.Notice(target, fmt.Sprintf(format, a...))
-}
-
-// Send (action) message to a target (channel or nickname).
-// No clear RFC on this one...
-func (irc *Connection) Action(target, message string) {
-	irc.pwrite <- fmt.Sprintf("PRIVMSG %s :\001ACTION %s\001\r\n", target, message)
-}
-
-// Send formatted (action) message to a target (channel or nickname).
-func (irc *Connection) Actionf(target, format string, a ...interface{}) {
-	irc.Action(target, fmt.Sprintf(format, a...))
+func (irc *Connection) Noticef(target, format string, a ...interface{}) error {
+	return irc.Notice(target, fmt.Sprintf(format, a...))
 }
 
 // Send (private) message to a target (channel or nickname).
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.1
-func (irc *Connection) Privmsg(target, message string) {
-	irc.pwrite <- fmt.Sprintf("PRIVMSG %s :%s\r\n", target, message)
+func (irc *Connection) Privmsg(target, message string) error {
+	return irc.Send("PRIVMSG", target, message)
 }
 
 // Send formated string to specified target (channel or nickname).
-func (irc *Connection) Privmsgf(target, format string, a ...interface{}) {
-	irc.Privmsg(target, fmt.Sprintf(format, a...))
+func (irc *Connection) Privmsgf(target, format string, a ...interface{}) error {
+	return irc.Privmsg(target, fmt.Sprintf(format, a...))
 }
 
-// Kick <user> from <channel> with <msg>. For no message, pass empty string ("")
-func (irc *Connection) Kick(user, channel, msg string) {
-	var cmd bytes.Buffer
-	cmd.WriteString(fmt.Sprintf("KICK %s %s", channel, user))
-	if msg != "" {
-		cmd.WriteString(fmt.Sprintf(" :%s", msg))
-	}
-	cmd.WriteString("\r\n")
-	irc.pwrite <- cmd.String()
+// Send (action) message to a target (channel or nickname).
+// No clear RFC on this one...
+func (irc *Connection) Action(target, message string) error {
+	return irc.Privmsg(target, fmt.Sprintf("\001ACTION %s\001", message))
 }
 
-// Kick all <users> from <channel> with <msg>. For no message, pass
-// empty string ("")
-func (irc *Connection) MultiKick(users []string, channel string, msg string) {
-	var cmd bytes.Buffer
-	cmd.WriteString(fmt.Sprintf("KICK %s %s", channel, strings.Join(users, ",")))
-	if msg != "" {
-		cmd.WriteString(fmt.Sprintf(" :%s", msg))
-	}
-	cmd.WriteString("\r\n")
-	irc.pwrite <- cmd.String()
-}
-
-// Send raw string.
-func (irc *Connection) SendRaw(message string) {
-	irc.pwrite <- message + "\r\n"
-}
-
-// Send raw formated string.
-func (irc *Connection) SendRawf(format string, a ...interface{}) {
-	irc.SendRaw(fmt.Sprintf(format, a...))
+// Send formatted (action) message to a target (channel or nickname).
+func (irc *Connection) Actionf(target, format string, a ...interface{}) error {
+	return irc.Action(target, fmt.Sprintf(format, a...))
 }
 
 // Set (new) nickname.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.2
-func (irc *Connection) Nick(n string) {
-	irc.nick = n
-	irc.SendRawf("NICK %s", n)
+func (irc *Connection) SetNick(n string) {
+	irc.stateMutex.Lock()
+	irc.Nick = n
+	irc.stateMutex.Unlock()
+
+	irc.Send("NICK", n)
 }
 
 // Determine nick currently used with the connection.
-func (irc *Connection) GetNick() string {
-	return irc.nickcurrent
+func (irc *Connection) CurrentNick() string {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.currentNick
 }
 
-// Query information about a particular nickname.
-// RFC 1459: https://tools.ietf.org/html/rfc1459#section-4.5.2
-func (irc *Connection) Whois(nick string) {
-	irc.SendRawf("WHOIS %s", nick)
+// Returns the expected or desired nickname for the connection;
+// if the real nickname is different, the client will periodically
+// attempt to change to this one.
+func (irc *Connection) PreferredNick() string {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.Nick
 }
 
-// Query information about a given nickname in the server.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.5.1
-func (irc *Connection) Who(nick string) {
-	irc.SendRawf("WHO %s", nick)
+func (irc *Connection) setCurrentNick(nick string) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.currentNick = nick
 }
 
-// Set different modes for a target (channel or nickname).
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.3
-func (irc *Connection) Mode(target string, modestring ...string) {
-	if len(modestring) > 0 {
-		mode := strings.Join(modestring, " ")
-		irc.SendRawf("MODE %s %s", target, mode)
-		return
-	}
-	irc.SendRawf("MODE %s", target)
-}
-
-func (irc *Connection) ErrorChan() chan error {
-	return irc.Error
+// Return IRCv3 CAPs actually enabled on the connection.
+func (irc *Connection) AcknowledgedCaps(result []string) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	result = make([]string, len(irc.acknowledgedCaps))
+	copy(result[:], irc.acknowledgedCaps[:])
+	return
 }
 
 // Returns true if the connection is connected to an IRC server.
 func (irc *Connection) Connected() bool {
-	return !irc.stopped
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.running
 }
 
-// A disconnect sends all buffered messages (if possible),
-// stops all goroutines and then closes the socket.
-func (irc *Connection) Disconnect() {
-	irc.Lock()
-	defer irc.Unlock()
+// Reconnect forces the client to reconnect to the server.
+// TODO try to ensure buffered messages are sent?
+func (irc *Connection) Reconnect() {
+	irc.closeEnd()
+}
 
-	if irc.end != nil {
+func (irc *Connection) closeEnd() {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.closeEndNoMutex()
+}
+
+func (irc *Connection) closeEndNoMutex() {
+	if irc.running {
+		irc.running = false
 		close(irc.end)
 	}
-
-	irc.Wait()
-
-	irc.end = nil
-
-	if irc.pwrite != nil {
-		close(irc.pwrite)
-	}
-
-	if irc.socket != nil {
-		irc.socket.Close()
-	}
-	irc.ErrorChan() <- ErrDisconnected
-}
-
-// Reconnect to a server using the current connection.
-func (irc *Connection) Reconnect() error {
-	irc.end = make(chan struct{})
-	return irc.Connect(irc.Server)
 }
 
 // Connect to a given server using the current connection configuration.
 // This function also takes care of identification if a password is provided.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1
-func (irc *Connection) Connect(server string) error {
-	irc.Server = server
-	// mark Server as stopped since there can be an error during connect
-	irc.stopped = true
+func (irc *Connection) Connect() (err error) {
+	// invariant: after Connect we are in one of two states:
+	// (a) success: return nil, socket open, goroutines launched, ready for Loop
+	// (b) failure: return error, socket closed, goroutines stopped,
+	//     ready for another call to Connect (possibly from Loop)
+	err = func() error {
+		irc.stateMutex.Lock()
+		defer irc.stateMutex.Unlock()
 
-	// make sure everything is ready for connection
-	if len(irc.Server) == 0 {
-		return errors.New("empty 'server'")
-	}
-	if strings.Index(irc.Server, ":") == 0 {
-		return errors.New("hostname is missing")
-	}
-	if strings.Index(irc.Server, ":") == len(irc.Server)-1 {
-		return errors.New("port missing")
-	}
-	_, ports, err := net.SplitHostPort(irc.Server)
+		if irc.quit {
+			return clientHasQuit // check this again in case of Quit() while we were asleep
+		}
+
+		// mark Server as stopped since there can be an error during connect
+		irc.acknowledgedCaps = nil
+		irc.running = false
+		irc.socket = nil
+		irc.currentNick = ""
+		irc.lastError = nil
+		irc.pingSent = false
+
+		if irc.Server == "" {
+			return errors.New("No server provided")
+		}
+		if len(irc.Nick) == 0 {
+			irc.Nick = defaultNick
+		}
+		if irc.User == "" {
+			irc.User = irc.Nick
+		}
+		if irc.Log == nil {
+			irc.Log = log.New(os.Stdout, "", log.LstdFlags)
+		}
+		if irc.KeepAlive == 0 {
+			irc.KeepAlive = 4 * time.Minute
+		}
+		if irc.Timeout == 0 {
+			irc.Timeout = 1 * time.Minute
+		}
+		if irc.KeepAlive < 2*irc.Timeout {
+			return errors.New("KeepAlive must be at least twice Timeout")
+		}
+		if irc.ReconnectFreq == 0 {
+			irc.ReconnectFreq = 2 * time.Minute
+		}
+		if irc.SASLLogin != "" && irc.SASLPassword != "" {
+			irc.UseSASL = true
+		}
+		if irc.UseSASL {
+			// ensure 'sasl' is in the cap list if necessary
+			if !sliceContains("sasl", irc.RequestCaps) {
+				irc.RequestCaps = append(irc.RequestCaps, "sasl")
+			}
+		}
+		if irc.SASLMech == "" {
+			irc.SASLMech = "PLAIN"
+		}
+		if irc.SASLMech != "PLAIN" {
+			return errors.New("only SASL PLAIN is supported")
+		}
+		if irc.MaxLineLen == 0 {
+			irc.MaxLineLen = 512
+		}
+		if irc.Version == "" {
+			irc.Version = Version
+		}
+		return nil
+	}()
+
 	if err != nil {
-		return errors.New("wrong address string")
-	}
-	port, err := strconv.Atoi(ports)
-	if err != nil {
-		return errors.New("extracting port failed")
-	}
-	if !((port >= 0) && (port <= 65535)) {
-		return errors.New("port number outside valid range")
-	}
-	if irc.Log == nil {
-		return errors.New("'Log' points to nil")
-	}
-	if len(irc.nick) == 0 {
-		return errors.New("empty 'nick'")
-	}
-	if len(irc.user) == 0 {
-		return errors.New("empty 'user'")
+		return err
 	}
 
+	irc.setupCallbacks()
+
+	if irc.Debug {
+		irc.Log.Printf("Connecting to %s (TLS: %t)\n", irc.Server, irc.UseTLS)
+	}
+
+	var socket net.Conn
 	if irc.UseTLS {
 		dialer := &net.Dialer{Timeout: irc.Timeout}
-		irc.socket, err = tls.DialWithDialer(dialer, "tcp", irc.Server, irc.TLSConfig)
+		socket, err = tls.DialWithDialer(dialer, "tcp", irc.Server, irc.TLSConfig)
 	} else {
-		irc.socket, err = net.DialTimeout("tcp", irc.Server, irc.Timeout)
+		socket, err = net.DialTimeout("tcp", irc.Server, irc.Timeout)
 	}
 	if err != nil {
 		return err
 	}
 
-	if irc.Encoding == nil {
-		irc.Encoding = encoding.Nop
+	if irc.Debug {
+		irc.Log.Printf("Connected to %s (%s)\n", irc.Server, socket.RemoteAddr())
 	}
 
-	irc.stopped = false
-	irc.Log.Printf("Connected to %s (%s)\n", irc.Server, irc.socket.RemoteAddr())
+	// reset all connection state
+	irc.stateMutex.Lock()
+	irc.socket = socket
+	irc.running = true
+	irc.end = make(chan empty)
+	irc.pwrite = make(chan []byte, writeQueueSize)
+	irc.wg.Add(3)
+	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
+	irc.saslChan = make(chan saslResult, 1)
+	irc.welcomeChan = make(chan empty, 1)
+	irc.stateMutex.Unlock()
 
-	irc.pwrite = make(chan string, 10)
-	irc.Error = make(chan error, 10)
-	irc.Add(3)
 	go irc.readLoop()
 	go irc.writeLoop()
 	go irc.pingLoop()
 
+	// now we have an open socket and goroutines; we need to clean up
+	// if there's a layer 7 failure
+	defer func() {
+		if err != nil {
+			irc.closeEnd()
+			irc.waitForStop()
+		}
+	}()
+
 	if len(irc.WebIRC) > 0 {
-		irc.pwrite <- fmt.Sprintf("WEBIRC %s\r\n", irc.WebIRC)
+		irc.Send("WEBIRC", irc.WebIRC...)
 	}
 
 	if len(irc.Password) > 0 {
-		irc.pwrite <- fmt.Sprintf("PASS %s\r\n", irc.Password)
+		irc.Send("PASS", irc.Password)
 	}
 
 	err = irc.negotiateCaps()
@@ -498,125 +616,72 @@ func (irc *Connection) Connect(server string) error {
 		return err
 	}
 
-	realname := irc.user
+	realname := irc.User
 	if irc.RealName != "" {
 		realname = irc.RealName
 	}
-
-	irc.pwrite <- fmt.Sprintf("NICK %s\r\n", irc.nick)
-	irc.pwrite <- fmt.Sprintf("USER %s 0.0.0.0 0.0.0.0 :%s\r\n", irc.user, realname)
-	return nil
+	irc.Send("NICK", irc.PreferredNick())
+	irc.Send("USER", irc.User, "s", "e", realname)
+	select {
+	case <-irc.welcomeChan:
+	case <-irc.end:
+		err = ServerDisconnected
+	case <-time.After(irc.Timeout):
+		err = ServerTimedOut
+	}
+	return
 }
 
 // Negotiate IRCv3 capabilities
 func (irc *Connection) negotiateCaps() error {
-	saslResChan := make(chan *SASLResult)
-	if irc.UseSASL {
-		irc.RequestCaps = append(irc.RequestCaps, "sasl")
-		irc.setupSASLCallbacks(saslResChan)
-	}
-
 	if len(irc.RequestCaps) == 0 {
 		return nil
 	}
 
-	cap_chan := make(chan bool, len(irc.RequestCaps))
-	irc.AddCallback("CAP", func(e *Event) {
-		if len(e.Arguments) != 3 {
-			return
-		}
-		command := e.Arguments[1]
+	var acknowledgedCaps []string
+	defer func() {
+		irc.stateMutex.Lock()
+		defer irc.stateMutex.Unlock()
+		irc.acknowledgedCaps = acknowledgedCaps
+	}()
 
-		if command == "LS" {
-			missing_caps := len(irc.RequestCaps)
-			for _, cap_name := range strings.Split(e.Arguments[2], " ") {
-				for _, req_cap := range irc.RequestCaps {
-					if cap_name == req_cap {
-						irc.pwrite <- fmt.Sprintf("CAP REQ :%s\r\n", cap_name)
-						missing_caps--
-					}
-				}
-			}
-
-			for i := 0; i < missing_caps; i++ {
-				cap_chan <- true
-			}
-		} else if command == "ACK" || command == "NAK" {
-			for _, cap_name := range strings.Split(strings.TrimSpace(e.Arguments[2]), " ") {
-				if cap_name == "" {
-					continue
-				}
-
-				if command == "ACK" {
-					irc.AcknowledgedCaps = append(irc.AcknowledgedCaps, cap_name)
-				}
-				cap_chan <- true
-			}
-		}
-	})
-
-	irc.pwrite <- "CAP LS\r\n"
-
-	if irc.UseSASL {
-		select {
-		case res := <-saslResChan:
-			if res.Failed {
-				close(saslResChan)
-				return res.Err
-			}
-		case <-time.After(CAP_TIMEOUT):
-			close(saslResChan)
-			// Raise an error if we can't authenticate with SASL.
-			return errors.New("SASL setup timed out. Does the server support SASL?")
-		}
-	}
+	irc.Send("CAP", "LS")
+	defer func() {
+		irc.Send("CAP", "END")
+	}()
 
 	remaining_caps := len(irc.RequestCaps)
 
-	select {
-	case <-cap_chan:
-		remaining_caps--
-	case <-time.After(CAP_TIMEOUT):
-		// The server probably doesn't implement CAP LS, which is "normal".
-		return nil
-	}
-
-	// Wait for all capabilities to be ACKed or NAKed before ending negotiation
+	timer := time.NewTimer(CAPTimeout)
 	for remaining_caps > 0 {
-		<-cap_chan
-		remaining_caps--
+		select {
+		case result := <-irc.capsChan:
+			timer.Stop()
+			remaining_caps--
+			if result.ack {
+				acknowledgedCaps = append(acknowledgedCaps, result.capName)
+			}
+		case <-timer.C:
+			// The server probably doesn't implement CAP LS, which is "normal".
+			return nil
+		case <- irc.end:
+			return ServerDisconnected
+		}
 	}
 
-	irc.pwrite <- fmt.Sprintf("CAP END\r\n")
+	if irc.UseSASL {
+		select {
+		case res := <-irc.saslChan:
+			if res.Failed {
+				return res.Err
+			}
+		case <-time.After(CAPTimeout):
+			// Raise an error if we can't authenticate with SASL.
+			return SASLFailed
+		case <- irc.end:
+			return ServerDisconnected
+		}
+	}
 
 	return nil
-}
-
-// Create a connection with the (publicly visible) nickname and username.
-// The nickname is later used to address the user. Returns nil if nick
-// or user are empty.
-func IRC(nick, user string) *Connection {
-	// catch invalid values
-	if len(nick) == 0 {
-		return nil
-	}
-	if len(user) == 0 {
-		return nil
-	}
-
-	irc := &Connection{
-		nick:        nick,
-		nickcurrent: nick,
-		user:        user,
-		Log:         log.New(os.Stdout, "", log.LstdFlags),
-		end:         make(chan struct{}),
-		Version:     VERSION,
-		KeepAlive:   4 * time.Minute,
-		Timeout:     1 * time.Minute,
-		PingFreq:    15 * time.Minute,
-		SASLMech:    "PLAIN",
-		QuitMessage: "",
-	}
-	irc.setupCallbacks()
-	return irc
 }

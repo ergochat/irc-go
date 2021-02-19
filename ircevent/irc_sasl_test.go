@@ -1,43 +1,95 @@
-package irc
+package ircevent
 
 import (
 	"crypto/tls"
+	"fmt"
 	"os"
 	"testing"
-	"time"
 )
 
-// set SASLLogin and SASLPassword environment variables before testing
-func TestConnectionSASL(t *testing.T) {
-	SASLServer := "irc.freenode.net:7000"
-	SASLLogin := os.Getenv("SASLLogin")
-	SASLPassword := os.Getenv("SASLPassword")
+const (
+	serverEnvVar = "IRCEVENT_SERVER"
+	saslEnvVar   = "IRCEVENT_SASL_LOGIN"
+	saslPassVar  = "IRCEVENT_SASL_PASSWORD"
+)
 
-	if SASLLogin == "" {
-		t.Skip("Define SASLLogin and SASLPasword environment varables to test SASL")
+func getSaslCreds() (account, password string) {
+	return os.Getenv(saslEnvVar), os.Getenv(saslPassVar)
+}
+
+func getenv(key, defaultValue string) (value string) {
+	value = os.Getenv(key)
+	if value == "" {
+		value = defaultValue
 	}
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
+	return
+}
+
+func getServer(sasl bool) string {
+	port := 6667
+	if sasl {
+		port = 6697
 	}
-	irccon := IRC("go-eventirc", "go-eventirc")
-	irccon.VerboseCallbackHandler = true
+	return fmt.Sprintf("%s:%d", getenv(serverEnvVar, "localhost"), port)
+}
+
+// set SASLLogin and SASLPassword environment variables before testing
+func runCAPTest(caps []string, useSASL bool, t *testing.T) {
+	SASLLogin, SASLPassword := getSaslCreds()
+	if useSASL {
+		if SASLLogin == "" {
+			t.Skip("Define SASLLogin and SASLPasword environment varables to test SASL")
+		}
+	}
+
+	irccon := connForTesting("go-eventirc", "go-eventirc", true)
 	irccon.Debug = true
 	irccon.UseTLS = true
-	irccon.UseSASL = true
-	irccon.SASLLogin = SASLLogin
-	irccon.SASLPassword = SASLPassword
+	if useSASL {
+		irccon.UseSASL = true
+		irccon.SASLLogin = SASLLogin
+		irccon.SASLPassword = SASLPassword
+	}
+	irccon.RequestCaps = caps
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-	irccon.AddCallback("001", func(e *Event) { irccon.Join("#go-eventirc") })
+	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
 
-	irccon.AddCallback("366", func(e *Event) {
+	irccon.AddCallback("366", func(e Event) {
 		irccon.Privmsg("#go-eventirc", "Test Message SASL\n")
-		time.Sleep(2 * time.Second)
 		irccon.Quit()
 	})
 
-	err := irccon.Connect(SASLServer)
+	err := irccon.Connect()
 	if err != nil {
 		t.Fatalf("SASL failed: %s", err)
 	}
 	irccon.Loop()
+}
+
+func TestConnectionSASL(t *testing.T) {
+	runCAPTest(nil, true, t)
+}
+
+func TestConnectionSASLWithAdditionalCaps(t *testing.T) {
+	runCAPTest([]string{"server-time", "message-tags", "batch", "labeled-response", "echo-message"}, true, t)
+}
+
+func TestConnectionSASLWithNonexistentCaps(t *testing.T) {
+	runCAPTest([]string{"server-time", "message-tags", "batch", "labeled-response", "echo-message", "oragono.io/xyzzy"}, true, t)
+}
+
+func TestConnectionSASLWithNonexistentCapsOnly(t *testing.T) {
+	runCAPTest([]string{"oragono.io/xyzzy"}, true, t)
+}
+
+func TestConnectionNonexistentCAPOnly(t *testing.T) {
+	runCAPTest([]string{"oragono.io/xyzzy"}, false, t)
+}
+
+func TestConnectionNonexistentCAPs(t *testing.T) {
+	runCAPTest([]string{"oragono.io/xyzzy", "server-time", "message-tags"}, false, t)
+}
+
+func TestConnectionGoodCAPs(t *testing.T) {
+	runCAPTest([]string{"server-time", "message-tags"}, false, t)
 }

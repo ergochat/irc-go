@@ -1,15 +1,16 @@
-package irc
+package ircevent
 
 import (
 	"crypto/tls"
 	"math/rand"
 	"sort"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
-const server = "irc.freenode.net:6667"
-const serverssl = "irc.freenode.net:7000"
 const channel = "#go-eventirc-test"
 const dict = "abcdefghijklmnopqrstuvwxyz"
 
@@ -17,99 +18,33 @@ const dict = "abcdefghijklmnopqrstuvwxyz"
 const verbose_tests = false
 const debug_tests = true
 
-func TestConnectionEmtpyServer(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect("")
-	if err == nil {
-		t.Fatal("emtpy server string not detected")
+func connForTesting(nick, user string, tls bool) *Connection {
+	irc := &Connection{
+		Nick:   nick,
+		User:   user,
+		Server: getServer(tls),
 	}
+	return irc
 }
 
-func TestConnectionDoubleColon(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect("::")
-	if err == nil {
-		t.Fatal("wrong number of ':' not detected")
-	}
-}
-
-func TestConnectionMissingHost(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect(":6667")
-	if err == nil {
-		t.Fatal("missing host not detected")
-	}
-}
-
-func TestConnectionMissingPort(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect("chat.freenode.net:")
-	if err == nil {
-		t.Fatal("missing port not detected")
-	}
-}
-
-func TestConnectionNegativePort(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect("chat.freenode.net:-1")
-	if err == nil {
-		t.Fatal("negative port number not detected")
-	}
-}
-
-func TestConnectionTooLargePort(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	err := irccon.Connect("chat.freenode.net:65536")
-	if err == nil {
-		t.Fatal("too large port number not detected")
-	}
-}
-
-func TestConnectionMissingLog(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	irccon.Log = nil
-	err := irccon.Connect("chat.freenode.net:6667")
-	if err == nil {
-		t.Fatal("missing 'Log' not detected")
-	}
-}
-
-func TestConnectionEmptyUser(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	// user may be changed after creation
-	irccon.user = ""
-	err := irccon.Connect("chat.freenode.net:6667")
-	if err == nil {
-		t.Fatal("empty 'user' not detected")
-	}
-}
-
-func TestConnectionEmptyNick(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
-	// nick may be changed after creation
-	irccon.nick = ""
-	err := irccon.Connect("chat.freenode.net:6667")
-	if err == nil {
-		t.Fatal("empty 'nick' not detected")
-	}
+func mockEvent(command string) ircmsg.IRCMessage {
+	return ircmsg.MakeMessage(nil, ":server.name", command)
 }
 
 func TestRemoveCallback(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	debugTest(irccon)
 
 	done := make(chan int, 10)
 
-	irccon.AddCallback("TEST", func(e *Event) { done <- 1 })
-	id := irccon.AddCallback("TEST", func(e *Event) { done <- 2 })
-	irccon.AddCallback("TEST", func(e *Event) { done <- 3 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
+	id := irccon.AddCallback("TEST", func(e Event) { done <- 2 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 3 })
 
 	// Should remove callback at index 1
-	irccon.RemoveCallback("TEST", id)
+	irccon.RemoveCallback(id)
 
-	irccon.RunCallbacks(&Event{
-		Code: "TEST",
-	})
+	irccon.runCallbacks(mockEvent("TEST"))
 
 	var results []int
 
@@ -122,17 +57,15 @@ func TestRemoveCallback(t *testing.T) {
 }
 
 func TestWildcardCallback(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	debugTest(irccon)
 
 	done := make(chan int, 10)
 
-	irccon.AddCallback("TEST", func(e *Event) { done <- 1 })
-	irccon.AddCallback("*", func(e *Event) { done <- 2 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
+	irccon.AddCallback("*", func(e Event) { done <- 2 })
 
-	irccon.RunCallbacks(&Event{
-		Code: "TEST",
-	})
+	irccon.runCallbacks(mockEvent("TEST"))
 
 	var results []int
 
@@ -145,20 +78,18 @@ func TestWildcardCallback(t *testing.T) {
 }
 
 func TestClearCallback(t *testing.T) {
-	irccon := IRC("go-eventirc", "go-eventirc")
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	debugTest(irccon)
 
 	done := make(chan int, 10)
 
-	irccon.AddCallback("TEST", func(e *Event) { done <- 0 })
-	irccon.AddCallback("TEST", func(e *Event) { done <- 1 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 0 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
 	irccon.ClearCallback("TEST")
-	irccon.AddCallback("TEST", func(e *Event) { done <- 2 })
-	irccon.AddCallback("TEST", func(e *Event) { done <- 3 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 2 })
+	irccon.AddCallback("TEST", func(e Event) { done <- 3 })
 
-	irccon.RunCallbacks(&Event{
-		Code: "TEST",
-	})
+	irccon.runCallbacks(mockEvent("TEST"))
 
 	var results []int
 
@@ -171,7 +102,7 @@ func TestClearCallback(t *testing.T) {
 }
 
 func TestIRCemptyNick(t *testing.T) {
-	irccon := IRC("", "go-eventirc")
+	irccon := connForTesting("", "go-eventirc", false)
 	irccon = nil
 	if irccon != nil {
 		t.Error("empty nick didn't result in error")
@@ -179,12 +110,6 @@ func TestIRCemptyNick(t *testing.T) {
 	}
 }
 
-func TestIRCemptyUser(t *testing.T) {
-	irccon := IRC("go-eventirc", "")
-	if irccon != nil {
-		t.Error("empty user didn't result in error")
-	}
-}
 func TestConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
@@ -192,22 +117,20 @@ func TestConnection(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	ircnick1 := randStr(8)
 	ircnick2 := randStr(8)
-	irccon1 := IRC(ircnick1, "IRCTest1")
-
-	irccon1.PingFreq = time.Second * 3
-
+	ircnick2orig := ircnick2
+	irccon1 := connForTesting(ircnick1, "IRCTest1", false)
 	debugTest(irccon1)
 
-	irccon2 := IRC(ircnick2, "IRCTest2")
+	irccon2 := connForTesting(ircnick2, "IRCTest2", false)
 	debugTest(irccon2)
 
 	teststr := randStr(20)
 	testmsgok := make(chan bool, 1)
 
-	irccon1.AddCallback("001", func(e *Event) { irccon1.Join(channel) })
-	irccon2.AddCallback("001", func(e *Event) { irccon2.Join(channel) })
-	irccon1.AddCallback("366", func(e *Event) {
-		go func(e *Event) {
+	irccon1.AddCallback("001", func(e Event) { irccon1.Join(channel) })
+	irccon2.AddCallback("001", func(e Event) { irccon2.Join(channel) })
+	irccon1.AddCallback("366", func(e Event) {
+		go func(e Event) {
 			tick := time.NewTicker(1 * time.Second)
 			i := 10
 			for {
@@ -229,14 +152,14 @@ func TestConnection(t *testing.T) {
 		}(e)
 	})
 
-	irccon2.AddCallback("366", func(e *Event) {
+	irccon2.AddCallback("366", func(e Event) {
 		ircnick2 = randStr(8)
-		irccon2.Nick(ircnick2)
+		irccon2.SetNick(ircnick2)
 	})
 
-	irccon2.AddCallback("PRIVMSG", func(e *Event) {
+	irccon2.AddCallback("PRIVMSG", func(e Event) {
 		if e.Message() == teststr {
-			if e.Nick == ircnick1 {
+			if e.Nick() == ircnick1 {
 				testmsgok <- true
 				irccon2.Quit()
 			} else {
@@ -248,18 +171,18 @@ func TestConnection(t *testing.T) {
 		}
 	})
 
-	irccon2.AddCallback("NICK", func(e *Event) {
-		if irccon2.nickcurrent == ircnick2 {
+	irccon2.AddCallback("NICK", func(e Event) {
+		if !(e.Nick() == ircnick2orig && e.Message() == ircnick2) {
 			t.Errorf("Nick change did not work!")
 		}
 	})
 
-	err := irccon1.Connect(server)
+	err := irccon1.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to freenode.")
 	}
-	err = irccon2.Connect(server)
+	err = irccon2.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to freenode.")
@@ -269,31 +192,40 @@ func TestConnection(t *testing.T) {
 	irccon1.Loop()
 }
 
-func TestReconnect(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
+func runReconnectTest(useSASL bool, t *testing.T) {
 	ircnick1 := randStr(8)
-	irccon := IRC(ircnick1, "IRCTestRe")
-	irccon.PingFreq = time.Second * 3
+	irccon := connForTesting(ircnick1, "IRCTestRe", false)
+	irccon.ReconnectFreq = time.Second * 1
+	saslLogin, saslPassword := getSaslCreds()
+	if useSASL {
+		if saslLogin == "" {
+			t.Skip("Define SASL environment varables to test SASL")
+		} else {
+			irccon.UseSASL = true
+			irccon.SASLLogin = saslLogin
+			irccon.SASLPassword = saslPassword
+		}
+	}
 	debugTest(irccon)
 
 	connects := 0
-	irccon.AddCallback("001", func(e *Event) { irccon.Join(channel) })
+	irccon.AddCallback("001", func(e Event) { irccon.Join(channel) })
 
-	irccon.AddCallback("366", func(e *Event) {
+	irccon.AddCallback("366", func(e Event) {
 		connects += 1
 		if connects > 2 {
 			irccon.Privmsgf(channel, "Connection nr %d (test done)\n", connects)
 			go irccon.Quit()
 		} else {
 			irccon.Privmsgf(channel, "Connection nr %d\n", connects)
-			time.Sleep(100) //Need to let the thraed actually send before closing socket
-			go irccon.Disconnect()
+			// XXX: wait for the message to actually send before we hang up
+			// (can this be avoided?)
+			time.Sleep(100 * time.Millisecond)
+			go irccon.Reconnect()
 		}
 	})
 
-	err := irccon.Connect(server)
+	err := irccon.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to freenode.")
@@ -305,23 +237,31 @@ func TestReconnect(t *testing.T) {
 	}
 }
 
+func TestReconnect(t *testing.T) {
+	runReconnectTest(false, t)
+}
+
+func TestReconnectWithSASL(t *testing.T) {
+	runReconnectTest(true, t)
+}
+
 func TestConnectionSSL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
 	ircnick1 := randStr(8)
-	irccon := IRC(ircnick1, "IRCTestSSL")
+	irccon := connForTesting(ircnick1, "IRCTestSSL", true)
 	debugTest(irccon)
 	irccon.UseTLS = true
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-	irccon.AddCallback("001", func(e *Event) { irccon.Join(channel) })
+	irccon.AddCallback("001", func(e Event) { irccon.Join(channel) })
 
-	irccon.AddCallback("366", func(e *Event) {
+	irccon.AddCallback("366", func(e Event) {
 		irccon.Privmsg(channel, "Test Message from SSL\n")
 		irccon.Quit()
 	})
 
-	err := irccon.Connect(serverssl)
+	err := irccon.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to freenode.")
@@ -340,7 +280,6 @@ func randStr(n int) string {
 }
 
 func debugTest(irccon *Connection) *Connection {
-	irccon.VerboseCallbackHandler = verbose_tests
 	irccon.Debug = debug_tests
 	return irccon
 }
@@ -357,4 +296,46 @@ func compareResults(received []int, desired ...int) bool {
 		}
 	}
 	return true
+}
+
+func TestConnectionNickInUse(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	ircnick := randStr(8)
+	irccon1 := connForTesting(ircnick, "IRCTest1", false)
+
+	debugTest(irccon1)
+
+	irccon2 := connForTesting(ircnick, "IRCTest2", false)
+	debugTest(irccon2)
+
+	n1 := make(chan string, 1)
+	n2 := make(chan string, 1)
+
+	// check the actual nick after 001 is processed
+	irccon1.AddCallback("002", func(e Event) { n1 <- irccon1.CurrentNick() })
+	irccon2.AddCallback("002", func(e Event) { n2 <- irccon2.CurrentNick() })
+
+	err := irccon1.Connect()
+	if err != nil {
+		panic(err)
+	}
+	err = irccon2.Connect()
+	if err != nil {
+		panic(err)
+	}
+
+	go irccon2.Loop()
+	go irccon1.Loop()
+	nick1 := <-n1
+	nick2 := <-n2
+	irccon1.Quit()
+	irccon2.Quit()
+	// we should have gotten two different nicks, one a prefix of the other
+	if nick1 == ircnick && len(nick1) < len(nick2) && strings.HasPrefix(nick2, nick1) {
+		return
+	}
+	if nick2 == ircnick && len(nick2) < len(nick1) && strings.HasPrefix(nick1, nick2) {
+		return
+	}
+	t.Errorf("expected %s and a suffixed version, got %s and %s", ircnick, nick1, nick2)
 }

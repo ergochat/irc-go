@@ -1,27 +1,69 @@
 package main
 
 import (
-	"github.com/thoj/go-ircevent"
 	"crypto/tls"
-	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/goshuirc/irc-go/ircevent"
 )
 
-const channel = "#go-eventirc-test";
-const serverssl = "irc.freenode.net:7000"
+func getenv(key, defaultValue string) (value string) {
+	value = os.Getenv(key)
+	if value == "" {
+		value = defaultValue
+	}
+	return
+}
 
 func main() {
-        ircnick1 := "blatiblat"
-        irccon := irc.IRC(ircnick1, "IRCTestSSL")
-        irccon.VerboseCallbackHandler = true
-        irccon.Debug = true
-        irccon.UseTLS = true
-        irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-        irccon.AddCallback("001", func(e *irc.Event) { irccon.Join(channel) })
-        irccon.AddCallback("366", func(e *irc.Event) {  })
-        err := irccon.Connect(serverssl)
+	nick := getenv("IRCEVENT_NICK", "robot")
+	server := getenv("IRCEVENT_SERVER", "localhost:6697")
+	channel := getenv("IRCEVENT_CHANNEL", "#ircevent-test")
+
+	irc := &ircevent.Connection{
+		Server:      server,
+		Nick:        nick,
+		Debug:       true,
+		UseTLS:      true,
+		TLSConfig:   &tls.Config{InsecureSkipVerify: true},
+		RequestCaps: []string{"server-time", "message-tags"},
+	}
+
+	irc.AddCallback("001", func(e ircevent.Event) { irc.Join(channel) })
+	irc.AddCallback("JOIN", func(e ircevent.Event) {}) // TODO try to rejoin if we *don't* get this
+	irc.AddCallback("PRIVMSG", func(e ircevent.Event) {
+		if len(e.Params) < 2 {
+			return
+		}
+		text := e.Params[1]
+		if strings.HasPrefix(text, nick) {
+			irc.Privmsg(e.Params[0], "don't @ me, fleshbag")
+		} else if text == "xyzzy" {
+			// this causes the server to disconnect us and the program to exit
+			irc.Quit()
+		} else if text == "plugh" {
+			// this causes the server to disconnect us, but the client will reconnect
+			irc.Send("QUIT", "I'LL BE BACK")
+		} else if text == "wwssadadba" {
+			// this line intentionally panics; the client will recover from it
+			irc.Privmsg(e.Params[0], e.Params[2])
+		}
+	})
+	// example client-to-client extension via message-tags:
+	// have the bot maintain a running sum of integers
+	var sum int64 // doesn't need synchronization as long as it's only visible from a single callback
+	irc.AddCallback("TAGMSG", func(e ircevent.Event) {
+		_, tv := e.GetTag("+summand")
+		if v, err := strconv.ParseInt(tv, 10, 64); err == nil {
+			sum += v
+			irc.SendWithTags(map[string]string{"+sum": strconv.FormatInt(sum, 10)}, "TAGMSG", e.Params[0])
+		}
+	})
+	err := irc.Connect()
 	if err != nil {
-		fmt.Printf("Err %s", err )
 		return
 	}
-        irccon.Loop()
+	irc.Loop()
 }

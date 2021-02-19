@@ -19,11 +19,13 @@ An example bot that uses these packages can be found [here](https://gist.github.
 
 Packages:
 
-* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Very work-in-progress client library.
+* [**ircmsg**](https://godoc.org/github.com/goshuirc/irc-go/ircmsg): IRC message handling, raw line parsing and creation.
 * [**ircfmt**](https://godoc.org/github.com/goshuirc/irc-go/ircfmt): IRC format codes handling, escaping and unescaping.
+* [**ircreader**](https://godoc.org/github.com/goshuirc/irc-go/ircreader): Optimized reader for \n-terminated lines, with an expanding but bounded buffer.
+* [**ircevent**](https://godoc.org/github.com/goshuirc/irc-go/ircevent): Work-in-progress client library (fork of [thoj/go-ircevent](https://github.com/thoj/go-ircevent)).
+* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Another work-in-progress client library.
 * [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
 * [**ircmatch**](https://godoc.org/github.com/goshuirc/irc-go/ircmatch): IRC string matching (mostly just a globbing engine).
-* [**ircmsg**](https://godoc.org/github.com/goshuirc/irc-go/ircmsg): IRC message handling, raw line parsing and creation.
 * [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
 
 ---

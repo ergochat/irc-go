@@ -1,79 +1,54 @@
 Description
 -----------
 
-Event based irc client library.
-
+This is an event-based IRC client library. It is a fork of [thoj/go-ircevent](https://github.com/thoj-ircevent).
 
 Features
 --------
-* Event based. Register Callbacks for the events you need to handle.
-* Handles basic irc demands for you
-	* Standard CTCP
-	* Reconnections on errors
-	* Detect stoned servers
-
-Install
--------
-	$ go get github.com/thoj/go-ircevent
+* Event-based: register callbacks for IRC commands
+* Handles reconnections
+* Supports SASL
+* Supports requesting [IRCv3 capabilities](https://ircv3.net/specs/core/capability-negotiation)
 
 Example
 -------
-See [examples/simple/simple.go](examples/simple/simple.go) and [irc_test.go](irc_test.go)
+See [examples/simple.go](examples/simple.go) for a working example, but this illustrates the API:
 
-Events for callbacks
---------------------
-* 001 Welcome
-* PING
-* CTCP Unknown CTCP
-* CTCP_VERSION Version request (Handled internaly)
-* CTCP_USERINFO
-* CTCP_CLIENTINFO
-* CTCP_TIME
-* CTCP_PING
-* CTCP_ACTION (/me)
-* PRIVMSG
-* MODE
-* JOIN
+```go
+irc := ircevent.Connection{
+	Server:      "testnet.oragono.io:6697",
+	UseTLS:      true,
+	Nick:        "ircevent-test",
+	Debug:       true,
+	RequestCaps: []string{"server-time", "message-tags"},
+}
 
-+Many more
+irc.AddCallback("001", func(e ircevent.Event) { irc.Join("#ircevent-test") })
 
+irc.AddCallback("PRIVMSG", func(event ircevent.Event) {
+	//event.Message() contains the message
+	//event.Nick() Contains the sender
+	//event.Params[0] Contains the channel
+});
 
-AddCallback Example
--------------------
-	ircobj.AddCallback("PRIVMSG", func(event *irc.Event) {
-		//event.Message() contains the message
-		//event.Nick Contains the sender
-		//event.Arguments[0] Contains the channel
-	});
+err := irc.Connect()
+if err != nil {
+	log.Fatal(err)
+}
+irc.Loop()
+```
 
-Please note: Callbacks are run in the main thread. If a callback needs a long
-time to execute please run it in a new thread.
-
-Example:
-
-        ircobj.AddCallback("PRIVMSG", func(event *irc.Event) {
-		go func(event *irc.Event) {
-                        //event.Message() contains the message
-                        //event.Nick Contains the sender
-                        //event.Arguments[0] Contains the channel
-		}(event)
-        });
-
+The read loop will wait for all callbacks to complete before moving on
+to the next message. If your callback needs to trigger a long-running task,
+you should spin off a new goroutine for it.
 
 Commands
 --------
-	ircobj := irc.IRC("<nick>", "<user>") //Create new ircobj
-	//Set options
-	ircobj.UseTLS = true //default is false
-	//ircobj.TLSOptions //set ssl options
-	ircobj.Password = "[server password]"
-	//Commands
-	ircobj.Connect("irc.someserver.com:6667") //Connect to server
-	ircobj.SendRaw("<string>") //sends string to server. Adds \r\n
-	ircobj.SendRawf("<formatstring>", ...) //sends formatted string to server.n
-	ircobj.Join("<#channel> [password]") 
-	ircobj.Nick("newnick") 
-	ircobj.Privmsg("<nickname | #channel>", "msg") // sends a message to either a certain nick or a channel
-	ircobj.Privmsgf(<nickname | #channel>, "<formatstring>", ...)
-	ircobj.Notice("<nickname | #channel>", "msg")
-	ircobj.Noticef("<nickname | #channel>", "<formatstring>", ...)
+These commands can be used from inside callbacks, or externally:
+
+	irc.Connect("irc.someserver.com:6667") //Connect to server
+	irc.Send(command, params...)
+	irc.SendWithTags(tags, command, params...)
+	irc.Join(channel)
+	irc.Privmsg(target, message)
+	irc.Privmsgf(target, formatString, params...)
