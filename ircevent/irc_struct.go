@@ -52,16 +52,16 @@ type Connection struct {
 	AllowPanic      bool // if set, don't recover() from panics in callbacks
 
 	// networking and synchronization
-	stateMutex   sync.Mutex     // innermost mutex: don't block while holding this
-	end          chan empty     // closing this causes the goroutines to exit (think threading.Event)
-	pwrite       chan []byte    // receives IRC lines to be sent to the socket
-	wg           sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
-	socket       net.Conn
-	lastError    error
-	quitAt       time.Time // time Quit() was called
-	running      bool      // is a connection active? is `end` open?
-	quit         bool      // user called Quit, do not reconnect
-	pingSent     bool      // we sent PING and are waiting for PONG
+	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
+	end        chan empty     // closing this causes the goroutines to exit (think threading.Event)
+	pwrite     chan []byte    // receives IRC lines to be sent to the socket
+	wg         sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
+	socket     net.Conn
+	lastError  error
+	quitAt     time.Time // time Quit() was called
+	running    bool      // is a connection active? is `end` open?
+	quit       bool      // user called Quit, do not reconnect
+	pingSent   bool      // we sent PING and are waiting for PONG
 
 	// IRC protocol connection state
 	currentNick      string // nickname assigned by the server, empty before registration

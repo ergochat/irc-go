@@ -62,7 +62,7 @@ func main() {
 	})
 	err := irc.Connect()
 	if err != nil {
-		return
+		log.Fatal(err)
 	}
 	irc.Loop()
 }

@@ -9,9 +9,11 @@ test:
 	$(info Note: ircevent must be tested separately)
 	./.check-gofmt.sh
 
-# ircevent requires a local ircd for testing, plus some env vars
+# ircevent requires a local ircd for testing, plus some env vars:
+# IRCEVENT_SASL_LOGIN and IRCEVENT_SASL_PASSWORD
 ircevent:
 	cd ircevent && go test . && go vet .
+	./.check-gofmt.sh
 
 gofmt:
 	./.check-gofmt.sh --fix

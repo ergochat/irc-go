@@ -9,12 +9,17 @@ import (
 
 const (
 	serverEnvVar = "IRCEVENT_SERVER"
-	saslEnvVar   = "IRCEVENT_SASL_LOGIN"
+	saslAccVar   = "IRCEVENT_SASL_LOGIN"
 	saslPassVar  = "IRCEVENT_SASL_PASSWORD"
 )
 
-func getSaslCreds() (account, password string) {
-	return os.Getenv(saslEnvVar), os.Getenv(saslPassVar)
+func setSaslTestCreds(irc *Connection, t *testing.T) {
+	acc := os.Getenv(saslAccVar)
+	if acc == "" {
+		t.Fatalf("define %s and %s environment variables to test SASL", saslAccVar, saslPassVar)
+	}
+	irc.SASLLogin = acc
+	irc.SASLPassword = os.Getenv(saslPassVar)
 }
 
 func getenv(key, defaultValue string) (value string) {
@@ -35,20 +40,11 @@ func getServer(sasl bool) string {
 
 // set SASLLogin and SASLPassword environment variables before testing
 func runCAPTest(caps []string, useSASL bool, t *testing.T) {
-	SASLLogin, SASLPassword := getSaslCreds()
-	if useSASL {
-		if SASLLogin == "" {
-			t.Skip("Define SASLLogin and SASLPasword environment varables to test SASL")
-		}
-	}
-
 	irccon := connForTesting("go-eventirc", "go-eventirc", true)
 	irccon.Debug = true
 	irccon.UseTLS = true
 	if useSASL {
-		irccon.UseSASL = true
-		irccon.SASLLogin = SASLLogin
-		irccon.SASLPassword = SASLPassword
+		setSaslTestCreds(irccon, t)
 	}
 	irccon.RequestCaps = caps
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}

@@ -196,15 +196,8 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "IRCTestRe", false)
 	irccon.ReconnectFreq = time.Second * 1
-	saslLogin, saslPassword := getSaslCreds()
 	if useSASL {
-		if saslLogin == "" {
-			t.Skip("Define SASL environment varables to test SASL")
-		} else {
-			irccon.UseSASL = true
-			irccon.SASLLogin = saslLogin
-			irccon.SASLPassword = saslPassword
-		}
+		setSaslTestCreds(irccon, t)
 	}
 	debugTest(irccon)
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -19,16 +20,20 @@ func getenv(key, defaultValue string) (value string) {
 
 func main() {
 	nick := getenv("IRCEVENT_NICK", "robot")
-	server := getenv("IRCEVENT_SERVER", "localhost:6697")
+	server := getenv("IRCEVENT_SERVER", "testnet.oragono.io:6697")
 	channel := getenv("IRCEVENT_CHANNEL", "#ircevent-test")
+	saslLogin := os.Getenv("IRCEVENT_SASL_LOGIN")
+	saslPassword := os.Getenv("IRCEVENT_SASL_PASSWORD")
 
 	irc := &ircevent.Connection{
-		Server:      server,
-		Nick:        nick,
-		Debug:       true,
-		UseTLS:      true,
-		TLSConfig:   &tls.Config{InsecureSkipVerify: true},
-		RequestCaps: []string{"server-time", "message-tags"},
+		Server:       server,
+		Nick:         nick,
+		Debug:        true,
+		UseTLS:       true,
+		TLSConfig:    &tls.Config{InsecureSkipVerify: true},
+		RequestCaps:  []string{"server-time", "message-tags"},
+		SASLLogin:    saslLogin, // SASL will be enabled automatically if these are set
+		SASLPassword: saslPassword,
 	}
 
 	irc.AddCallback("001", func(e ircevent.Event) { irc.Join(channel) })
@@ -63,7 +68,7 @@ func main() {
 	})
 	err := irc.Connect()
 	if err != nil {
-		return
+		log.Fatal(err)
 	}
 	irc.Loop()
 }
