@@ -230,6 +230,8 @@ var encodeErrorTests = []struct {
 	err     error
 }{
 	{tags: nil, command: "PRIVMSG", params: []string{"", "hi"}, err: ErrorBadParam},
+	{tags: nil, command: "KICK", params: []string{":nick", "message"}, err: ErrorBadParam},
+	{tags: nil, command: "QUX", params: []string{"#baz", ":bat", "bar"}, err: ErrorBadParam},
 	{tags: nil, command: "", params: []string{"hi"}, err: ErrorCommandMissing},
 	{tags: map[string]string{"a\x00b": "hi"}, command: "PING", params: []string{"hi"}, err: ErrorLineContainsBadChar},
 	{tags: map[string]string{"ab": "hi"}, command: "PING", params: []string{"h\x00i"}, err: ErrorLineContainsBadChar},
