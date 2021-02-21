@@ -42,7 +42,7 @@ func main() {
 		limit = envLimit
 	}
 
-	irc := &ircevent.Connection{
+	irc := ircevent.Connection{
 		Server:      server,
 		Nick:        nick,
 		RequestCaps: []string{"server-time", "echo-message"},

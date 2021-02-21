@@ -25,7 +25,7 @@ func main() {
 	saslLogin := os.Getenv("IRCEVENT_SASL_LOGIN")
 	saslPassword := os.Getenv("IRCEVENT_SASL_PASSWORD")
 
-	irc := &ircevent.Connection{
+	irc := ircevent.Connection{
 		Server:       server,
 		Nick:         nick,
 		Debug:        true,
