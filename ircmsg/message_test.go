@@ -220,27 +220,31 @@ func TestEncode(t *testing.T) {
 			)
 		}
 	}
+}
 
-	// make sure we fail on no command
-	msg := MakeMessage(nil, "example.com", "", "*")
-	_, err := msg.LineBytesStrict(true, 0)
-	if err == nil {
-		t.Error(
-			"For", "Test Failure 1",
-			"expected", "an error",
-			"got", err,
-		)
-	}
+var encodeErrorTests = []struct {
+	tags    map[string]string
+	prefix  string
+	command string
+	params  []string
+	err     error
+}{
+	{tags: nil, command: "PRIVMSG", params: []string{"", "hi"}, err: ErrorBadParam},
+	{tags: nil, command: "", params: []string{"hi"}, err: ErrorCommandMissing},
+	{tags: map[string]string{"a\x00b": "hi"}, command: "PING", params: []string{"hi"}, err: ErrorLineContainsBadChar},
+	{tags: map[string]string{"ab": "hi"}, command: "PING", params: []string{"h\x00i"}, err: ErrorLineContainsBadChar},
+	{tags: map[string]string{"ab": "hi"}, command: "PING", params: []string{"h\ni"}, err: ErrorLineContainsBadChar},
+	{tags: map[string]string{"ab": "hi"}, command: "PING", params: []string{"hi\rQUIT"}, err: ErrorLineContainsBadChar},
+	{tags: map[string]string{"ab": "hi"}, command: "NOTICE", params: []string{"#channel", "hi\r\nQUIT"}, err: ErrorLineContainsBadChar},
+}
 
-	// make sure we fail with params in right way
-	msg = MakeMessage(nil, "example.com", "TEST", "*", "t s", "", "Param after empty!")
-	_, err = msg.LineBytesStrict(true, 0)
-	if err == nil {
-		t.Error(
-			"For", "Test Failure 2",
-			"expected", "an error",
-			"got", err,
-		)
+func TestEncodeErrors(t *testing.T) {
+	for _, ep := range encodeErrorTests {
+		msg := MakeMessage(ep.tags, ep.prefix, ep.command, ep.params...)
+		_, err := msg.LineBytesStrict(true, 512)
+		if err != ep.err {
+			t.Errorf("For %#v, expected %v, got %v", msg, ep.err, err)
+		}
 	}
 }
 
