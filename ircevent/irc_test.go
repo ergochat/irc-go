@@ -136,7 +136,7 @@ func TestConnection(t *testing.T) {
 			for {
 				select {
 				case <-tick.C:
-					irccon1.Privmsgf(channel, "%s\n", teststr)
+					irccon1.Privmsgf(channel, "%s", teststr)
 					if i == 0 {
 						t.Errorf("Timeout while wating for test message from the other thread.")
 						return
@@ -207,10 +207,10 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 	irccon.AddCallback("366", func(e Event) {
 		connects += 1
 		if connects > 2 {
-			irccon.Privmsgf(channel, "Connection nr %d (test done)\n", connects)
+			irccon.Privmsgf(channel, "Connection nr %d (test done)", connects)
 			go irccon.Quit()
 		} else {
-			irccon.Privmsgf(channel, "Connection nr %d\n", connects)
+			irccon.Privmsgf(channel, "Connection nr %d", connects)
 			// XXX: wait for the message to actually send before we hang up
 			// (can this be avoided?)
 			time.Sleep(100 * time.Millisecond)
@@ -250,7 +250,7 @@ func TestConnectionSSL(t *testing.T) {
 	irccon.AddCallback("001", func(e Event) { irccon.Join(channel) })
 
 	irccon.AddCallback("366", func(e Event) {
-		irccon.Privmsg(channel, "Test Message from SSL\n")
+		irccon.Privmsg(channel, "Test Message from SSL")
 		irccon.Quit()
 	})
 
