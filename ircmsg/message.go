@@ -168,19 +168,12 @@ func trimInitialSpaces(str string) string {
 }
 
 func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IRCMessage, err error) {
-	if strings.IndexByte(line, '\x00') != -1 {
-		err = ErrorLineContainsBadChar
-		return
-	}
-
-	// trim to the first appearance of either '\r' or '\n':
-	lineEnd := strings.IndexByte(line, '\r')
-	newlineIndex := strings.IndexByte(line, '\n')
-	if newlineIndex != -1 && (lineEnd == -1 || newlineIndex < lineEnd) {
-		lineEnd = newlineIndex
-	}
-	if lineEnd != -1 {
-		line = line[:lineEnd]
+	// remove either \n or \r\n from the end of the line:
+	line = strings.TrimSuffix(line, "\n")
+	line = strings.TrimSuffix(line, "\r")
+	// now validate for the 3 forbidden bytes:
+	if strings.IndexByte(line, '\x00') != -1 || strings.IndexByte(line, '\n') != -1 || strings.IndexByte(line, '\r') != -1 {
+		return ircmsg, ErrorLineContainsBadChar
 	}
 
 	if len(line) < 1 {

@@ -71,10 +71,6 @@ var decodetests = []testcode{
 		MakeMessage(nil, "", "LIST")},
 	{"list  ",
 		MakeMessage(nil, "", "LIST")},
-	{"privmsg #darwin :command injection attempt \n:Nickserv PRIVMSG user :Please re-enter your password",
-		MakeMessage(nil, "", "PRIVMSG", "#darwin", "command injection attempt ")},
-	{"privmsg #darwin :command injection attempt \r:Nickserv PRIVMSG user :Please re-enter your password",
-		MakeMessage(nil, "", "PRIVMSG", "#darwin", "command injection attempt ")},
 	{"@time=2848  :dan-!d@localhost  LIST \r\n",
 		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "LIST")},
 }
@@ -87,11 +83,11 @@ type testparseerror struct {
 var decodetesterrors = []testparseerror{
 	{"", ErrorLineIsEmpty},
 	{"\r\n", ErrorLineIsEmpty},
-	{"\r\n    ", ErrorLineIsEmpty},
-	{"\r\n ", ErrorLineIsEmpty},
+	{"\r\n    ", ErrorLineContainsBadChar},
+	{"\r\n ", ErrorLineContainsBadChar},
 	{" \r\n", ErrorLineIsEmpty},
-	{" \r\n ", ErrorLineIsEmpty},
-	{"     \r\n  ", ErrorLineIsEmpty},
+	{" \r\n ", ErrorLineContainsBadChar},
+	{"     \r\n  ", ErrorLineContainsBadChar},
 	{"@tags=tesa\r\n", ErrorLineIsEmpty},
 	{"@tags=tested  \r\n", ErrorLineIsEmpty},
 	{":dan-   \r\n", ErrorLineIsEmpty},
@@ -100,6 +96,8 @@ var decodetesterrors = []testparseerror{
 	{"@tag1=1;tag2=2 :dan      \r\n", ErrorLineIsEmpty},
 	{"@tag1=1;tag2=2\x00 :dan      \r\n", ErrorLineContainsBadChar},
 	{"@tag1=1;tag2=2\x00 :shivaram PRIVMSG #channel  hi\r\n", ErrorLineContainsBadChar},
+	{"privmsg #channel :command injection attempt \n:Nickserv PRIVMSG user :Please re-enter your password", ErrorLineContainsBadChar},
+	{"privmsg #channel :command injection attempt \r:Nickserv PRIVMSG user :Please re-enter your password", ErrorLineContainsBadChar},
 }
 
 func TestDecode(t *testing.T) {
