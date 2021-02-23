@@ -1,7 +1,6 @@
 package ircevent
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -93,6 +92,14 @@ func (irc *Connection) getCallbacks(code string) (result []Callback) {
 
 // Execute all callbacks associated with a given event.
 func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
+	if !irc.AllowPanic {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
+			}
+		}()
+	}
+
 	event := Event{IRCMessage: msg}
 
 	if irc.EnableCTCP {
@@ -100,62 +107,12 @@ func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 	}
 
 	callbacks := irc.getCallbacks(event.Command)
-	if len(callbacks) == 0 {
-		return
+
+	// just run the callbacks in serial, since it's not safe for them
+	// to take a long time to execute in any case
+	for _, callback := range callbacks {
+		callback(event)
 	}
-
-	if irc.CallbackTimeout == 0 {
-		// just run the callbacks in serial in this case;
-		// it's not safe for them to take a long time anyway
-		if !irc.AllowPanic {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
-				}
-			}()
-		}
-
-		for _, callback := range callbacks {
-			callback(event)
-		}
-	} else {
-		event.Ctx = context.Background()
-		ctx, cancel := context.WithTimeout(event.Ctx, irc.CallbackTimeout)
-		event.Ctx = ctx
-		defer cancel()
-
-		remaining := len(callbacks)
-		done := make(chan empty, remaining)
-
-		for _, callback := range callbacks {
-			go runCallbackConcurrent(event, callback, done, irc.Log, irc.AllowPanic)
-		}
-
-		for remaining > 0 {
-			select {
-			case <-done:
-				remaining--
-			case <-event.Ctx.Done():
-				irc.Log.Printf("Timeout on %s while waiting for %d callback(s)\n", event.Command, remaining)
-				return
-			}
-		}
-	}
-}
-
-func runCallbackConcurrent(event Event, callback Callback, done chan empty, log *log.Logger, allowPanic bool) {
-	if !allowPanic {
-		defer func() {
-			if r := recover(); r != nil {
-				if !allowPanic {
-					log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
-				}
-			}
-		}()
-	}
-
-	callback(event)
-	done <- empty{}
 }
 
 // Set up some initial callbacks to handle the IRC/CTCP protocol.
