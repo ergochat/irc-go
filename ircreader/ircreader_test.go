@@ -4,6 +4,7 @@
 package ircreader
 
 import (
+	"fmt"
 	"io"
 	"math/rand"
 	"reflect"
@@ -106,4 +107,68 @@ func TestLineReader(t *testing.T) {
 		}
 		doLineReaderTest(counts, t)
 	}
+}
+
+type mockConnLimits struct {
+	// simulates the arrival of data via TCP;
+	// each Read() call will read from at most one of the slices
+	reads [][]byte
+}
+
+func (c *mockConnLimits) Read(b []byte) (n int, err error) {
+	if len(c.reads) == 0 {
+		return n, io.EOF
+	}
+	readLen := min(len(c.reads[0]), len(b))
+	copy(b[:readLen], c.reads[0][:readLen])
+	c.reads[0] = c.reads[0][readLen:]
+	if len(c.reads[0]) == 0 {
+		c.reads = c.reads[1:]
+	}
+	return readLen, nil
+}
+
+func makeLine(length int, ending bool) (result []byte) {
+	totalLen := length
+	if ending {
+		totalLen++
+	}
+	result = make([]byte, totalLen)
+	for i := 0; i < length; i++ {
+		result[i] = 'a'
+	}
+	if ending {
+		result[len(result)-1] = '\n'
+	}
+	return
+}
+
+func assertEqual(found, expected interface{}) {
+	if !reflect.DeepEqual(found, expected) {
+		panic(fmt.Sprintf("expected %#v, found %#v", expected, found))
+	}
+}
+
+func TestRegression(t *testing.T) {
+	var c mockConnLimits
+	// this read fills up the buffer with a terminated line:
+	c.reads = append(c.reads, makeLine(4605, true))
+	// this is a large, unterminated read:
+	c.reads = append(c.reads, makeLine(4095, false))
+	// this terminates the previous read, within the acceptable limit:
+	c.reads = append(c.reads, makeLine(500, true))
+
+	var cc IRCReader
+	cc.Initialize(&c, 512, 4096+512)
+
+	line, err := cc.ReadLine()
+	assertEqual(len(line), 4605)
+	assertEqual(err, nil)
+
+	line, err = cc.ReadLine()
+	assertEqual(len(line), 4595)
+	assertEqual(err, nil)
+
+	line, err = cc.ReadLine()
+	assertEqual(err, io.EOF)
 }
