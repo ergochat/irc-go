@@ -51,7 +51,7 @@ func runCAPTest(caps []string, useSASL bool, t *testing.T) {
 	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
 
 	irccon.AddCallback("366", func(e Event) {
-		irccon.Privmsg("#go-eventirc", "Test Message SASL\n")
+		irccon.Privmsg("#go-eventirc", "Test Message SASL")
 		irccon.Quit()
 	})
 
