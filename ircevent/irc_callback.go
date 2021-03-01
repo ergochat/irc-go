@@ -225,15 +225,17 @@ func (irc *Connection) handleRplWelcome(e Event) {
 	if len(e.Params) > 0 {
 		irc.currentNick = e.Params[0]
 	}
-
-	// wake up Connect() if applicable
-	select {
-	case irc.welcomeChan <- empty{}:
-	default:
-	}
 }
 
 func (irc *Connection) handleRegistration(e Event) {
+	// wake up Connect() if applicable
+	defer func() {
+		select {
+		case irc.welcomeChan <- empty{}:
+		default:
+		}
+	}()
+
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
 
@@ -245,6 +247,7 @@ func (irc *Connection) handleRegistration(e Event) {
 	// mark the isupport complete
 	irc.isupport = irc.isupportPartial
 	irc.isupportPartial = nil
+
 }
 
 func (irc *Connection) handleUnavailableNick(e Event) {
