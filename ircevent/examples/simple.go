@@ -36,7 +36,13 @@ func main() {
 		SASLPassword: saslPassword,
 	}
 
-	irc.AddCallback("001", func(e ircevent.Event) { irc.Join(channel) })
+	irc.AddConnectCallback(func(e ircevent.Event) {
+		// attempt to set the BOT mode on ourself:
+		if botMode := irc.ISupport()["BOT"]; botMode != "" {
+			irc.Send("MODE", irc.CurrentNick(), "+"+botMode)
+		}
+		irc.Join(channel)
+	})
 	irc.AddCallback("JOIN", func(e ircevent.Event) {}) // TODO try to rejoin if we *don't* get this
 	irc.AddCallback("PRIVMSG", func(e ircevent.Event) {
 		if len(e.Params) < 2 {

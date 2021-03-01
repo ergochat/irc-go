@@ -51,7 +51,7 @@ func runCAPTest(caps []string, useSASL bool, t *testing.T) {
 	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
 
 	irccon.AddCallback("366", func(e Event) {
-		irccon.Privmsg("#go-eventirc", "Test Message SASL\n")
+		irccon.Privmsg("#go-eventirc", "Test Message SASL")
 		irccon.Quit()
 	})
 
@@ -88,4 +88,19 @@ func TestConnectionNonexistentCAPs(t *testing.T) {
 
 func TestConnectionGoodCAPs(t *testing.T) {
 	runCAPTest([]string{"server-time", "message-tags"}, false, t)
+}
+
+func TestSASLFail(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", true)
+	irccon.Debug = true
+	irccon.UseTLS = true
+	setSaslTestCreds(irccon, t)
+	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
+	// intentionally break the password
+	irccon.SASLPassword = irccon.SASLPassword + "_"
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("successfully connected with invalid password")
+	}
 }

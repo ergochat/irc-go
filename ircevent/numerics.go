@@ -1,0 +1,17 @@
+package ircevent
+
+const (
+	RPL_WELCOME         = "001"
+	RPL_ISUPPORT        = "005"
+	RPL_ENDOFMOTD       = "376"
+	ERR_NOMOTD          = "422"
+	ERR_NICKNAMEINUSE   = "433"
+	ERR_UNAVAILRESOURCE = "437"
+	// SASL
+	RPL_LOGGEDIN    = "900"
+	RPL_LOGGEDOUT   = "901"
+	ERR_NICKLOCKED  = "902"
+	RPL_SASLSUCCESS = "903"
+	ERR_SASLFAIL    = "904"
+	ERR_SASLALREADY = "907"
+)

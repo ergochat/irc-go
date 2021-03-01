@@ -56,27 +56,6 @@ func TestRemoveCallback(t *testing.T) {
 	}
 }
 
-func TestWildcardCallback(t *testing.T) {
-	irccon := connForTesting("go-eventirc", "go-eventirc", false)
-	debugTest(irccon)
-
-	done := make(chan int, 10)
-
-	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
-	irccon.AddCallback("*", func(e Event) { done <- 2 })
-
-	irccon.runCallbacks(mockEvent("TEST"))
-
-	var results []int
-
-	results = append(results, <-done)
-	results = append(results, <-done)
-
-	if !compareResults(results, 1, 2) {
-		t.Error("Wildcard callback not called")
-	}
-}
-
 func TestClearCallback(t *testing.T) {
 	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	debugTest(irccon)
@@ -331,4 +310,25 @@ func TestConnectionNickInUse(t *testing.T) {
 		return
 	}
 	t.Errorf("expected %s and a suffixed version, got %s and %s", ircnick, nick1, nick2)
+}
+
+func TestConnectionCallbacks(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	ircnick := randStr(8)
+	irccon1 := connForTesting(ircnick, "IRCTest1", false)
+	debugTest(irccon1)
+	resultChan := make(chan map[string]string, 1)
+	irccon1.AddConnectCallback(func(e Event) {
+		resultChan <- irccon1.ISupport()
+	})
+	err := irccon1.Connect()
+	if err != nil {
+		panic(err)
+	}
+	go irccon1.Loop()
+	isupport := <-resultChan
+	if casemapping := isupport["CASEMAPPING"]; casemapping == "" {
+		t.Errorf("casemapping not detected in 005 RPL_ISUPPORT output; this is unheard of")
+	}
+	irccon1.Quit()
 }

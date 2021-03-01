@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/goshuirc/irc-go/ircmsg"
+)
+
+const (
+	// fake events that we manage specially
+	registrationEvent = "*REGISTRATION"
 )
 
 // Tuple type for uniquely identifying callbacks
@@ -16,27 +22,44 @@ type CallbackID struct {
 }
 
 // Register a callback to a connection and event code. A callback is a function
-// which takes only an Event pointer as parameter. Valid event codes are all
-// IRC/CTCP commands and error/response codes. To register a callback for all
-// events pass "*" as the event code. This function returns the ID of the
+// which takes only an Event object as parameter. Valid event codes are all
+// IRC/CTCP commands and error/response codes. This function returns the ID of the
 // registered callback for later management.
 func (irc *Connection) AddCallback(eventCode string, callback func(Event)) CallbackID {
+	return irc.addCallback(eventCode, Callback(callback), false, 0)
+}
+
+func (irc *Connection) addCallback(eventCode string, callback Callback, prepend bool, idNum uint64) CallbackID {
 	eventCode = strings.ToUpper(eventCode)
+	if eventCode == "" || strings.HasPrefix(eventCode, "*") {
+		return CallbackID{}
+	}
 
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
 
 	if irc.events == nil {
-		irc.events = make(map[string]map[uint64]Callback)
+		irc.events = make(map[string][]callbackPair)
 	}
 
-	_, ok := irc.events[eventCode]
-	if !ok {
-		irc.events[eventCode] = make(map[uint64]Callback)
+	if idNum == 0 {
+		idNum = irc.callbackCounter
+		irc.callbackCounter++
 	}
-	id := CallbackID{eventCode: eventCode, id: irc.idCounter}
-	irc.idCounter++
-	irc.events[eventCode][id.id] = Callback(callback)
+	id := CallbackID{eventCode: eventCode, id: idNum}
+	newPair := callbackPair{id: id.id, callback: callback}
+	current := irc.events[eventCode]
+	newList := make([]callbackPair, len(current)+1)
+	start := 0
+	if prepend {
+		newList[start] = newPair
+		start++
+	}
+	copy(newList[start:], current)
+	if !prepend {
+		newList[len(newList)-1] = newPair
+	}
+	irc.events[eventCode] = newList
 	return id
 }
 
@@ -44,7 +67,27 @@ func (irc *Connection) AddCallback(eventCode string, callback func(Event)) Callb
 func (irc *Connection) RemoveCallback(id CallbackID) {
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
-	delete(irc.events[id.eventCode], id.id)
+	switch id.eventCode {
+	case registrationEvent:
+		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
+		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
+	default:
+		irc.removeCallbackNoMutex(id.eventCode, id.id)
+	}
+}
+
+func (irc *Connection) removeCallbackNoMutex(code string, id uint64) {
+	current := irc.events[code]
+	if len(current) == 0 {
+		return
+	}
+	newList := make([]callbackPair, 0, len(current)-1)
+	for _, p := range current {
+		if p.id != id {
+			newList = append(newList, p)
+		}
+	}
+	irc.events[code] = newList
 }
 
 // Remove all callbacks from a given event code.
@@ -61,33 +104,32 @@ func (irc *Connection) ReplaceCallback(id CallbackID, callback func(Event)) bool
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
 
-	if _, ok := irc.events[id.eventCode][id.id]; ok {
-		irc.events[id.eventCode][id.id] = callback
-		return true
+	list := irc.events[id.eventCode]
+	for i, p := range list {
+		if p.id == id.id {
+			list[i] = callbackPair{id: id.id, callback: callback}
+			return true
+		}
 	}
 	return false
 }
 
-func (irc *Connection) getCallbacks(code string) (result []Callback) {
+// Convenience function to add a callback that will be called once the
+// connection is completed (this is traditionally referred to as "connection
+// registration").
+func (irc *Connection) AddConnectCallback(callback func(Event)) (id CallbackID) {
+	// XXX: forcibly use the same ID number for both copies of the callback
+	id376 := irc.AddCallback(RPL_ENDOFMOTD, callback)
+	irc.addCallback(ERR_NOMOTD, callback, false, id376.id)
+	return CallbackID{eventCode: registrationEvent, id: id376.id}
+}
+
+func (irc *Connection) getCallbacks(code string) (result []callbackPair) {
 	code = strings.ToUpper(code)
 
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
-
-	cMap := irc.events[code]
-	starMap := irc.events["*"]
-	length := len(cMap) + len(starMap)
-	if length == 0 {
-		return
-	}
-	result = make([]Callback, 0, length)
-	for _, c := range cMap {
-		result = append(result, c)
-	}
-	for _, c := range starMap {
-		result = append(result, c)
-	}
-	return
+	return irc.events[code]
 }
 
 // Execute all callbacks associated with a given event.
@@ -106,12 +148,12 @@ func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 		eventRewriteCTCP(&event)
 	}
 
-	callbacks := irc.getCallbacks(event.Command)
+	callbackPairs := irc.getCallbacks(event.Command)
 
 	// just run the callbacks in serial, since it's not safe for them
 	// to take a long time to execute in any case
-	for _, callback := range callbacks {
-		callback(event)
+	for _, pair := range callbackPairs {
+		pair.callback(event)
 	}
 }
 
@@ -136,12 +178,15 @@ func (irc *Connection) setupCallbacks() {
 
 	// 433: ERR_NICKNAMEINUSE "<nick> :Nickname is already in use"
 	// 437: ERR_UNAVAILRESOURCE "<nick/channel> :Nick/channel is temporarily unavailable"
-	irc.AddCallback("433", irc.handleUnavailableNick)
-	irc.AddCallback("437", irc.handleUnavailableNick)
+	irc.AddCallback(ERR_NICKNAMEINUSE, irc.handleUnavailableNick)
+	irc.AddCallback(ERR_UNAVAILRESOURCE, irc.handleUnavailableNick)
 
-	// 1: RPL_WELCOME "Welcome to the Internet Relay Network <nick>!<user>@<host>"
+	// 001: RPL_WELCOME "Welcome to the Internet Relay Network <nick>!<user>@<host>"
 	// Set irc.currentNick to the actually used nick in this connection.
-	irc.AddCallback("001", irc.handleRplWelcome)
+	irc.AddCallback(RPL_WELCOME, irc.handleRplWelcome)
+
+	// 005: RPL_ISUPPORT, conveys supported server features
+	irc.AddCallback(RPL_ISUPPORT, irc.handleISupport)
 
 	// respond to NICK from the server (in response to our own NICK, or sent unprompted)
 	irc.AddCallback("NICK", func(e Event) {
@@ -156,36 +201,7 @@ func (irc *Connection) setupCallbacks() {
 		}
 	})
 
-	irc.AddCallback("CAP", func(e Event) {
-		if len(e.Params) != 3 {
-			return
-		}
-		command := e.Params[1]
-		capsChan := irc.capsChan
-
-		// TODO this assumes all the caps on one line
-		// TODO support CAP LS 302
-		if command == "LS" {
-			capsList := strings.Fields(e.Params[2])
-			for _, capName := range irc.RequestCaps {
-				if sliceContains(capName, capsList) {
-					irc.Send("CAP", "REQ", capName)
-				} else {
-					select {
-					case capsChan <- capResult{capName, false}:
-					default:
-					}
-				}
-			}
-		} else if command == "ACK" || command == "NAK" {
-			for _, capName := range strings.Fields(e.Params[2]) {
-				select {
-				case capsChan <- capResult{capName, command == "ACK"}:
-				default:
-				}
-			}
-		}
-	})
+	irc.AddCallback("CAP", irc.handleCAP)
 
 	if irc.UseSASL {
 		irc.setupSASLCallbacks()
@@ -194,6 +210,11 @@ func (irc *Connection) setupCallbacks() {
 	if irc.EnableCTCP {
 		irc.setupCTCPCallbacks()
 	}
+
+	// prepend our own callbacks for the end of registration,
+	// so they happen before any client-added callbacks
+	irc.addCallback(RPL_ENDOFMOTD, irc.handleRegistration, true, 0)
+	irc.addCallback(ERR_NOMOTD, irc.handleRegistration, true, 0)
 }
 
 func (irc *Connection) handleRplWelcome(e Event) {
@@ -204,12 +225,29 @@ func (irc *Connection) handleRplWelcome(e Event) {
 	if len(e.Params) > 0 {
 		irc.currentNick = e.Params[0]
 	}
+}
 
+func (irc *Connection) handleRegistration(e Event) {
 	// wake up Connect() if applicable
-	select {
-	case irc.welcomeChan <- empty{}:
-	default:
+	defer func() {
+		select {
+		case irc.welcomeChan <- empty{}:
+		default:
+		}
+	}()
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	if irc.registered {
+		return
 	}
+	irc.registered = true
+
+	// mark the isupport complete
+	irc.isupport = irc.isupportPartial
+	irc.isupportPartial = nil
+
 }
 
 func (irc *Connection) handleUnavailableNick(e Event) {
@@ -227,5 +265,128 @@ func (irc *Connection) handleUnavailableNick(e Event) {
 
 	if nickToTry != "" {
 		irc.Send("NICK", nickToTry)
+	}
+}
+
+func (irc *Connection) handleISupport(e Event) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	// TODO handle 005 changes after registration
+	if irc.isupportPartial == nil {
+		return
+	}
+	if len(e.Params) < 3 {
+		return
+	}
+	for _, token := range e.Params[1 : len(e.Params)-1] {
+		equalsIdx := strings.IndexByte(token, '=')
+		if equalsIdx == -1 {
+			irc.isupportPartial[token] = "" // no value
+		} else {
+			irc.isupportPartial[token[:equalsIdx]] = unescapeISupportValue(token[equalsIdx+1:])
+		}
+	}
+}
+
+func unescapeISupportValue(in string) (out string) {
+	if strings.IndexByte(in, '\\') == -1 {
+		return in
+	}
+	var buf strings.Builder
+	for i := 0; i < len(in); {
+		if in[i] == '\\' && i+3 < len(in) && in[i+1] == 'x' {
+			hex := in[i+2 : i+4]
+			if octet, err := strconv.ParseInt(hex, 16, 8); err == nil {
+				buf.WriteByte(byte(octet))
+				i += 4
+				continue
+			}
+		}
+		buf.WriteByte(in[i])
+		i++
+	}
+	return buf.String()
+}
+
+func (irc *Connection) handleCAP(e Event) {
+	if len(e.Params) < 3 {
+		return
+	}
+	ack := false
+	// CAP <NICK | * > <SUBCOMMAND> PARAMS...
+	switch e.Params[1] {
+	case "LS":
+		irc.handleCAPLS(e.Params[2:])
+	case "ACK":
+		ack = true
+		fallthrough
+	case "NAK":
+		for _, token := range strings.Fields(e.Params[2]) {
+			name, _ := splitCAPToken(token)
+			if sliceContains(name, irc.RequestCaps) {
+				select {
+				case irc.capsChan <- capResult{capName: name, ack: ack}:
+				default:
+				}
+			}
+		}
+	}
+}
+
+func (irc *Connection) handleCAPLS(params []string) {
+	var capsToReq, capsNotFound []string
+	defer func() {
+		for _, c := range capsToReq {
+			irc.Send("CAP", "REQ", c)
+		}
+		for _, c := range capsNotFound {
+			select {
+			case irc.capsChan <- capResult{capName: c, ack: false}:
+			default:
+			}
+		}
+	}()
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	if irc.registered {
+		// TODO server could probably trick us into panic here by sending
+		// additional LS before the end of registration
+		return
+	}
+
+	if irc.capsAdvertised == nil {
+		irc.capsAdvertised = make(map[string]string)
+	}
+
+	// multiline responses to CAP LS 302 start with a 4-parameter form:
+	// CAP * LS * :account-notify away-notify [...]
+	// and end with a 3-parameter form:
+	// CAP * LS :userhost-in-names znc.in/playback [...]
+	final := len(params) == 1
+	for _, token := range strings.Fields(params[len(params)-1]) {
+		name, value := splitCAPToken(token)
+		irc.capsAdvertised[name] = value
+	}
+
+	if final {
+		for _, c := range irc.RequestCaps {
+			if _, ok := irc.capsAdvertised[c]; ok {
+				capsToReq = append(capsToReq, c)
+			} else {
+				capsNotFound = append(capsNotFound, c)
+			}
+		}
+	}
+}
+
+func splitCAPToken(token string) (name, value string) {
+	equalIdx := strings.IndexByte(token, '=')
+	if equalIdx == -1 {
+		return token, ""
+	} else {
+		return token[:equalIdx], token[equalIdx+1:]
 	}
 }

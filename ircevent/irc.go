@@ -446,13 +446,23 @@ func (irc *Connection) setCurrentNick(nick string) {
 	irc.currentNick = nick
 }
 
-// Return IRCv3 CAPs actually enabled on the connection.
-func (irc *Connection) AcknowledgedCaps(result []string) {
+// Return IRCv3 CAPs actually enabled on the connection, together
+// with their values if applicable. The resulting map is shared,
+// so do not modify it.
+func (irc *Connection) AcknowledgedCaps() (result map[string]string) {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
-	result = make([]string, len(irc.acknowledgedCaps))
-	copy(result[:], irc.acknowledgedCaps[:])
-	return
+	return irc.capsAcked
+}
+
+// Returns the 005 RPL_ISUPPORT tokens sent by the server when the
+// connection was initiated, parsed into key-value form as a map.
+// The resulting map is shared, so do not modify it.
+func (irc *Connection) ISupport() (result map[string]string) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	// XXX modifications to isupport are not permitted after registration
+	return irc.isupport
 }
 
 // Returns true if the connection is connected to an IRC server.
@@ -498,7 +508,6 @@ func (irc *Connection) Connect() (err error) {
 		}
 
 		// mark Server as stopped since there can be an error during connect
-		irc.acknowledgedCaps = nil
 		irc.running = false
 		irc.socket = nil
 		irc.currentNick = ""
@@ -588,6 +597,11 @@ func (irc *Connection) Connect() (err error) {
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty, 1)
+	irc.registered = false
+	irc.isupportPartial = make(map[string]string)
+	irc.isupport = nil
+	irc.capsAcked = make(map[string]string)
+	irc.capsAdvertised = nil
 	irc.stateMutex.Unlock()
 
 	go irc.readLoop()
@@ -642,10 +656,12 @@ func (irc *Connection) negotiateCaps() error {
 	defer func() {
 		irc.stateMutex.Lock()
 		defer irc.stateMutex.Unlock()
-		irc.acknowledgedCaps = acknowledgedCaps
+		for _, c := range acknowledgedCaps {
+			irc.capsAcked[c] = irc.capsAdvertised[c]
+		}
 	}()
 
-	irc.Send("CAP", "LS")
+	irc.Send("CAP", "LS", "302")
 	defer func() {
 		irc.Send("CAP", "END")
 	}()
@@ -670,6 +686,11 @@ func (irc *Connection) negotiateCaps() error {
 	}
 
 	if irc.UseSASL {
+		if !sliceContains("sasl", acknowledgedCaps) {
+			return SASLFailed
+		} else {
+			irc.Send("AUTHENTICATE", irc.SASLMech)
+		}
 		select {
 		case res := <-irc.saslChan:
 			if res.Failed {
