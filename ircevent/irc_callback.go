@@ -10,6 +10,11 @@ import (
 	"github.com/goshuirc/irc-go/ircmsg"
 )
 
+const (
+	// fake events that we manage specially
+	registrationEvent = "*REGISTRATION"
+)
+
 // Tuple type for uniquely identifying callbacks
 type CallbackID struct {
 	eventCode string
@@ -17,9 +22,8 @@ type CallbackID struct {
 }
 
 // Register a callback to a connection and event code. A callback is a function
-// which takes only an Event pointer as parameter. Valid event codes are all
-// IRC/CTCP commands and error/response codes. To register a callback for all
-// events pass "*" as the event code. This function returns the ID of the
+// which takes only an Event object as parameter. Valid event codes are all
+// IRC/CTCP commands and error/response codes. This function returns the ID of the
 // registered callback for later management.
 func (irc *Connection) AddCallback(eventCode string, callback func(Event)) CallbackID {
 	return irc.addCallback(eventCode, Callback(callback), false, 0)
@@ -27,6 +31,9 @@ func (irc *Connection) AddCallback(eventCode string, callback func(Event)) Callb
 
 func (irc *Connection) addCallback(eventCode string, callback Callback, prepend bool, idNum uint64) CallbackID {
 	eventCode = strings.ToUpper(eventCode)
+	if eventCode == "" || strings.HasPrefix(eventCode, "*") {
+		return CallbackID{}
+	}
 
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
@@ -61,7 +68,7 @@ func (irc *Connection) RemoveCallback(id CallbackID) {
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
 	switch id.eventCode {
-	case "*REGISTRATION":
+	case registrationEvent:
 		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
 		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
 	default:
@@ -114,7 +121,7 @@ func (irc *Connection) AddConnectCallback(callback func(Event)) (id CallbackID) 
 	// XXX: forcibly use the same ID number for both copies of the callback
 	id376 := irc.AddCallback(RPL_ENDOFMOTD, callback)
 	irc.addCallback(ERR_NOMOTD, callback, false, id376.id)
-	return CallbackID{eventCode: "*REGISTRATION", id: id376.id}
+	return CallbackID{eventCode: registrationEvent, id: id376.id}
 }
 
 func (irc *Connection) getCallbacks(code string) (result []callbackPair) {
