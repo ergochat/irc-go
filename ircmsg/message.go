@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -161,7 +162,7 @@ func ParseLineStrict(line string, fromClient bool, truncateLen int) (ircmsg IRCM
 // slice off any amount of ' ' from the front of the string
 func trimInitialSpaces(str string) string {
 	var i int
-	for i = 0; i < len(str) && str[i] == ' '; i += 1 {
+	for i = 0; i < len(str) && str[i] == ' '; i++ {
 	}
 	return str[i:]
 }
@@ -408,11 +409,25 @@ func (ircmsg *IRCMessage) line(tagLimit, clientOnlyTagDataLimit, serverAddedTagD
 		buf.WriteString(param)
 	}
 
-	// truncate if desired
-	// -2 for \r\n
-	restLen := buf.Len() - lenTags
-	if 0 < truncateLen && (truncateLen-2) < restLen {
-		buf.Truncate(lenTags + (truncateLen - 2))
+	// truncate if desired; leave 2 bytes over for \r\n:
+	if truncateLen != 0 && (truncateLen-2) < (buf.Len()-lenTags) {
+		newBufLen := lenTags + (truncateLen - 2)
+		buf.Truncate(newBufLen)
+		// XXX: we may have truncated in the middle of a UTF8-encoded codepoint;
+		// if so, remove additional bytes, stopping when the sequence either
+		// ends in a valid codepoint, or we have removed 3 bytes (the maximum
+		// length of the remnant of a once-valid, truncated codepoint; we don't
+		// want to truncate the entire message if it wasn't UTF8 in the first
+		// place).
+		for i := 0; i < (utf8.UTFMax - 1); i++ {
+			r, n := utf8.DecodeLastRune(buf.Bytes())
+			if r == utf8.RuneError && n <= 1 {
+				newBufLen--
+				buf.Truncate(newBufLen)
+			} else {
+				break
+			}
+		}
 	}
 	buf.WriteString("\r\n")
 
