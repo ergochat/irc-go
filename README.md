@@ -25,7 +25,6 @@ Packages:
 * [**ircevent**](https://godoc.org/github.com/goshuirc/irc-go/ircevent): Work-in-progress client library (fork of [thoj/go-ircevent](https://github.com/thoj/go-ircevent)).
 * [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Another work-in-progress client library.
 * [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
-* [**ircmatch**](https://godoc.org/github.com/goshuirc/irc-go/ircmatch): IRC string matching (mostly just a globbing engine).
 * [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
 
 ---
