@@ -1,9 +1,12 @@
 package ircmsg
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type testcode struct {
@@ -401,6 +404,103 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 	line, err = message.LineBytesStrict(false, 0)
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+var truncateTests = []string{
+	"x", // U+0078, Latin Small Letter X, 1 byte
+	"ç", // U+00E7, Latin Small Letter C with Cedilla, 2 bytes
+	"ꙮ", // U+A66E, Cyrillic Letter Multiocular O, 3 bytes
+	"🐬", // U+1F42C, Dolphin, 4 bytes
+}
+
+func assertEqual(found, expected interface{}) {
+	if !reflect.DeepEqual(found, expected) {
+		panic(fmt.Sprintf("expected %#v, found %#v", expected, found))
+	}
+}
+
+func buildPingParam(initialLen, minLen int, encChar string) (result string) {
+	var out strings.Builder
+	for i := 0; i < initialLen; i++ {
+		out.WriteByte('a')
+	}
+	for out.Len() <= minLen {
+		out.WriteString(encChar)
+	}
+	return out.String()
+}
+
+func min(i, j int) int {
+	if i < j {
+		return i
+	}
+	return j
+}
+
+func TestTruncate(t *testing.T) {
+	// OK, this test is weird: we're going to build a line with a final parameter
+	// that consists of a bunch of a's, then some nonzero number of repetitions
+	// of a different UTF8-encoded codepoint. we'll test all 4 possible lengths
+	// for a codepoint, and a number of different alignments for the codepoint
+	// relative to the 512-byte boundary. in all cases, we should produce valid
+	// UTF8, and truncate at most 3 bytes below the 512-byte boundary.
+	for idx, s := range truncateTests {
+		// sanity check that we have the expected lengths:
+		assertEqual(len(s), idx+1)
+		r, _ := utf8.DecodeRuneInString(s)
+		if r == utf8.RuneError {
+			panic("invalid codepoint in test suite")
+		}
+
+		// "PING [param]\r\n", max parameter size is 512-7=505 bytes
+		for initialLen := 490; initialLen < 500; initialLen++ {
+			for i := 1; i < 50; i++ {
+				param := buildPingParam(initialLen, initialLen+i, s)
+				msg := MakeMessage(nil, "", "PING", param)
+				msgBytes, err := msg.LineBytesStrict(false, 512)
+				if err != nil {
+					panic(err)
+				}
+				if len(msgBytes) > 512 {
+					t.Errorf("invalid serialized length %d", len(msgBytes))
+				}
+				msgBytesNonTrunc, _ := msg.LineBytes()
+				if len(msgBytes) < min(512-3, len(msgBytesNonTrunc)) {
+					t.Errorf("invalid serialized length %d", len(msgBytes))
+				}
+				if !utf8.Valid(msgBytes) {
+					t.Errorf("PING %s encoded to invalid UTF8: %#v\n", param, msgBytes)
+				}
+				// skip over "PING "
+				first, _ := utf8.DecodeRune(msgBytes[5:])
+				assertEqual(first, rune('a'))
+				last, _ := utf8.DecodeLastRune(bytes.TrimSuffix(msgBytes, []byte("\r\n")))
+				assertEqual(last, r)
+			}
+		}
+	}
+}
+
+func TestTruncateNonUTF8(t *testing.T) {
+	for l := 490; l < 530; l++ {
+		var buf strings.Builder
+		for i := 0; i < l; i++ {
+			buf.WriteByte('\xff')
+		}
+		param := buf.String()
+		msg := MakeMessage(nil, "", "PING", param)
+		msgBytes, err := msg.LineBytesStrict(false, 512)
+		if err != nil {
+			panic(err)
+		}
+		if len(msgBytes) > 512 {
+			t.Errorf("invalid serialized length %d", len(msgBytes))
+		}
+		// full length is "PING <param>\r\n", 7+len(param)
+		if len(msgBytes) < min(512-3, 7+len(param)) {
+			t.Errorf("invalid serialized length %d", len(msgBytes))
+		}
 	}
 }
 
