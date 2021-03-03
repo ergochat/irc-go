@@ -43,7 +43,7 @@ var (
 	// length limit (typically 512 bytes). This error is non-fatal; if encountered
 	// when parsing a message, the message is parsed up to the length limit, and
 	// if encountered when serializing a message, the message is truncated to the limit.
-	ErrorBodyTooLong = errors.New("Line could not be processed because its body exceeded the length limit")
+	ErrorBodyTooLong = errors.New("Line body exceeded the specified length limit; outgoing messages will be truncated")
 
 	// ErrorTagsTooLong indicates that the message exceeded the maximum tag length
 	// (the specified response on the server side is 417 ERR_INPUTTOOLONG).
@@ -162,14 +162,14 @@ func ParseLine(line string) (ircmsg IRCMessage, err error) {
 // ParseLineStrict creates and returns an IRCMessage from the given IRC line,
 // taking the maximum length into account and truncating the message as appropriate.
 // If fromClient is true, it enforces the client limit on tag data length (4094 bytes),
-// allowing the server to return ERR_INPUTTOOLONG as appropriate. If truncateLen is
+// allowing the server to return ERR_INPUTTOOLONG as appropriate. If maxLenBody is
 // nonzero, it is the length at which the non-tag portion of the message is truncated.
-func ParseLineStrict(line string, fromClient bool, truncateLen int) (ircmsg IRCMessage, err error) {
+func ParseLineStrict(line string, fromClient bool, maxLenBody int) (ircmsg IRCMessage, err error) {
 	maxTagDataLength := MaxlenTagData
 	if fromClient {
 		maxTagDataLength = MaxlenClientTagData
 	}
-	return parseLine(line, maxTagDataLength, truncateLen)
+	return parseLine(line, maxTagDataLength, maxLenBody)
 }
 
 // slice off any amount of ' ' from the front of the string
@@ -180,17 +180,17 @@ func trimInitialSpaces(str string) string {
 	return str[i:]
 }
 
-func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IRCMessage, err error) {
+func parseLine(line string, maxTagDataLength int, maxLenBody int) (ircmsg IRCMessage, err error) {
 	// remove either \n or \r\n from the end of the line:
 	line = strings.TrimSuffix(line, "\n")
 	line = strings.TrimSuffix(line, "\r")
 	// whether we removed them ourselves, or whether they were removed previously,
 	// they count against the line limit:
-	if truncateLen != 0 {
-		if truncateLen <= 2 {
+	if maxLenBody != 0 {
+		if maxLenBody <= 2 {
 			return ircmsg, ErrorLineIsEmpty
 		}
-		truncateLen -= 2
+		maxLenBody -= 2
 	}
 	// now validate for the 3 forbidden bytes:
 	if strings.IndexByte(line, '\x00') != -1 || strings.IndexByte(line, '\n') != -1 || strings.IndexByte(line, '\r') != -1 {
@@ -220,9 +220,8 @@ func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IRCMe
 	}
 
 	// truncate if desired
-	if 0 < truncateLen && truncateLen < len(line) {
+	if maxLenBody != 0 && maxLenBody < len(line) {
 		err = ErrorBodyTooLong
-		line = line[:truncateLen]
 	}
 
 	// modern: "These message parts, and parameters themselves, are separated
