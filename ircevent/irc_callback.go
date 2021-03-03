@@ -215,6 +215,10 @@ func (irc *Connection) setupCallbacks() {
 	// so they happen before any client-added callbacks
 	irc.addCallback(RPL_ENDOFMOTD, irc.handleRegistration, true, 0)
 	irc.addCallback(ERR_NOMOTD, irc.handleRegistration, true, 0)
+
+	irc.AddCallback("FAIL", irc.handleStandardReplies)
+	irc.AddCallback("WARN", irc.handleStandardReplies)
+	irc.AddCallback("NOTE", irc.handleStandardReplies)
 }
 
 func (irc *Connection) handleRplWelcome(e Event) {
@@ -388,5 +392,14 @@ func splitCAPToken(token string) (name, value string) {
 		return token, ""
 	} else {
 		return token[:equalIdx], token[equalIdx+1:]
+	}
+}
+
+func (irc *Connection) handleStandardReplies(e Event) {
+	// unconditionally print messages for FAIL and WARN;
+	// re. NOTE, if debug is enabled, we print the raw line anyway
+	switch e.Command {
+	case "FAIL", "WARN":
+		irc.Log.Printf("Received error code from server: %s %s\n", e.Command, strings.Join(e.Params, " "))
 	}
 }
