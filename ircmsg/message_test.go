@@ -14,30 +14,31 @@ type testcode struct {
 	message IRCMessage
 }
 type testcodewithlen struct {
-	raw     string
-	length  int
-	message IRCMessage
+	raw              string
+	length           int
+	message          IRCMessage
+	truncateExpected bool
 }
 
 var decodelentests = []testcodewithlen{
-	{":dan-!d@localhost PRIVMSG dan #test :What a cool message\r\n", 20,
-		MakeMessage(nil, "dan-!d@localhost", "PR")},
+	{":dan-!d@localhost PRIVMSG dan #test :What a cool message\r\n", 22,
+		MakeMessage(nil, "dan-!d@localhost", "PR"), true},
 	{"@time=12732;re TEST *\r\n", 512,
-		MakeMessage(map[string]string{"time": "12732", "re": ""}, "", "TEST", "*")},
+		MakeMessage(map[string]string{"time": "12732", "re": ""}, "", "TEST", "*"), false},
 	{"@time=12732;re TEST *\r\n", 512,
-		MakeMessage(map[string]string{"time": "12732", "re": ""}, "", "TEST", "*")},
+		MakeMessage(map[string]string{"time": "12732", "re": ""}, "", "TEST", "*"), false},
 	{":dan- TESTMSG\r\n", 2048,
-		MakeMessage(nil, "dan-", "TESTMSG")},
-	{":dan- TESTMSG dan \r\n", 12,
-		MakeMessage(nil, "dan-", "TESTMS")},
+		MakeMessage(nil, "dan-", "TESTMSG"), false},
+	{":dan- TESTMSG dan \r\n", 14,
+		MakeMessage(nil, "dan-", "TESTMS"), true},
 	{"TESTMSG\r\n", 6,
-		MakeMessage(nil, "", "TESTMS")},
+		MakeMessage(nil, "", "TEST"), true},
 	{"TESTMSG\r\n", 7,
-		MakeMessage(nil, "", "TESTMSG")},
+		MakeMessage(nil, "", "TESTM"), true},
 	{"TESTMSG\r\n", 8,
-		MakeMessage(nil, "", "TESTMSG")},
+		MakeMessage(nil, "", "TESTMS"), true},
 	{"TESTMSG\r\n", 9,
-		MakeMessage(nil, "", "TESTMSG")},
+		MakeMessage(nil, "", "TESTMSG"), false},
 }
 
 // map[string]string{"time": "12732", "re": ""}
@@ -103,15 +104,22 @@ var decodetesterrors = []testparseerror{
 	{"privmsg #channel :command injection attempt \r:Nickserv PRIVMSG user :Please re-enter your password", ErrorLineContainsBadChar},
 }
 
+func validateTruncateError(pair testcodewithlen, err error, t *testing.T) {
+	if pair.truncateExpected {
+		if err != ErrorBodyTooLong {
+			t.Error("For", pair.raw, "expected truncation, but got error", err)
+		}
+	} else {
+		if err != nil {
+			t.Error("For", pair.raw, "expected no error, but got", err)
+		}
+	}
+}
+
 func TestDecode(t *testing.T) {
 	for _, pair := range decodelentests {
 		ircmsg, err := ParseLineStrict(pair.raw, true, pair.length)
-		if err != nil {
-			t.Error(
-				"For", pair.raw,
-				"Failed to parse line:", err,
-			)
-		}
+		validateTruncateError(pair, err, t)
 
 		if !reflect.DeepEqual(ircmsg, pair.message) {
 			t.Error(
@@ -162,11 +170,11 @@ var encodetests = []testcode{
 }
 var encodelentests = []testcodewithlen{
 	{":dan-!d@lo\r\n", 12,
-		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message")},
+		MakeMessage(nil, "dan-!d@localhost", "PRIVMSG", "dan", "#test", "What a cool message"), true},
 	{"@time=12732 TEST *\r\n", 52,
-		MakeMessage(map[string]string{"time": "12732"}, "", "TEST", "*")},
+		MakeMessage(map[string]string{"time": "12732"}, "", "TEST", "*"), false},
 	{"@riohwihowihirgowihre TEST *\r\n", 8,
-		MakeMessage(map[string]string{"riohwihowihirgowihre": ""}, "", "TEST", "*", "*")},
+		MakeMessage(map[string]string{"riohwihowihirgowihre": ""}, "", "TEST", "*", "*"), true},
 }
 
 func TestEncode(t *testing.T) {
@@ -206,12 +214,7 @@ func TestEncode(t *testing.T) {
 	}
 	for _, pair := range encodelentests {
 		line, err := pair.message.LineBytesStrict(true, pair.length)
-		if err != nil {
-			t.Error(
-				"For", pair.raw,
-				"Failed to parse line:", err,
-			)
-		}
+		validateTruncateError(pair, err, t)
 
 		if string(line) != pair.raw {
 			t.Error(
@@ -376,7 +379,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 		message.SetTag(fmt.Sprintf("+client-tag-%d", i), "ok")
 	}
 	line, err = message.LineBytesStrict(true, 0)
-	if err != ErrorLineTooLong {
+	if err != ErrorTagsTooLong {
 		t.Error(err)
 	}
 
@@ -385,7 +388,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 		message.SetTag(fmt.Sprintf("server-tag-%d", i), "ok")
 	}
 	line, err = message.LineBytesStrict(true, 0)
-	if err != ErrorLineTooLong {
+	if err != ErrorTagsTooLong {
 		t.Error(err)
 	}
 
@@ -397,7 +400,7 @@ func TestErrorLineTooLongGeneration(t *testing.T) {
 	}
 	// client cannot send this much tag data:
 	line, err = message.LineBytesStrict(true, 0)
-	if err != ErrorLineTooLong {
+	if err != ErrorTagsTooLong {
 		t.Error(err)
 	}
 	// but a server can, since the tags are split between client and server budgets:
@@ -459,13 +462,19 @@ func TestTruncate(t *testing.T) {
 				param := buildPingParam(initialLen, initialLen+i, s)
 				msg := MakeMessage(nil, "", "PING", param)
 				msgBytes, err := msg.LineBytesStrict(false, 512)
-				if err != nil {
-					panic(err)
+				msgBytesNonTrunc, _ := msg.LineBytes()
+				if len(msgBytes) == len(msgBytesNonTrunc) {
+					if err != nil {
+						t.Error("message was not truncated, but got error", err)
+					}
+				} else {
+					if err != ErrorBodyTooLong {
+						t.Error("message was truncated, but got error", err)
+					}
 				}
 				if len(msgBytes) > 512 {
 					t.Errorf("invalid serialized length %d", len(msgBytes))
 				}
-				msgBytesNonTrunc, _ := msg.LineBytes()
 				if len(msgBytes) < min(512-3, len(msgBytesNonTrunc)) {
 					t.Errorf("invalid serialized length %d", len(msgBytes))
 				}
@@ -491,7 +500,7 @@ func TestTruncateNonUTF8(t *testing.T) {
 		param := buf.String()
 		msg := MakeMessage(nil, "", "PING", param)
 		msgBytes, err := msg.LineBytesStrict(false, 512)
-		if err != nil {
+		if !(err == nil || err == ErrorBodyTooLong) {
 			panic(err)
 		}
 		if len(msgBytes) > 512 {
