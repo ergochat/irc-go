@@ -162,14 +162,14 @@ func ParseLine(line string) (ircmsg IRCMessage, err error) {
 // ParseLineStrict creates and returns an IRCMessage from the given IRC line,
 // taking the maximum length into account and truncating the message as appropriate.
 // If fromClient is true, it enforces the client limit on tag data length (4094 bytes),
-// allowing the server to return ERR_INPUTTOOLONG as appropriate. If maxLenBody is
+// allowing the server to return ERR_INPUTTOOLONG as appropriate. If truncateLen is
 // nonzero, it is the length at which the non-tag portion of the message is truncated.
-func ParseLineStrict(line string, fromClient bool, maxLenBody int) (ircmsg IRCMessage, err error) {
+func ParseLineStrict(line string, fromClient bool, truncateLen int) (ircmsg IRCMessage, err error) {
 	maxTagDataLength := MaxlenTagData
 	if fromClient {
 		maxTagDataLength = MaxlenClientTagData
 	}
-	return parseLine(line, maxTagDataLength, maxLenBody)
+	return parseLine(line, maxTagDataLength, truncateLen)
 }
 
 // slice off any amount of ' ' from the front of the string
@@ -180,17 +180,17 @@ func trimInitialSpaces(str string) string {
 	return str[i:]
 }
 
-func parseLine(line string, maxTagDataLength int, maxLenBody int) (ircmsg IRCMessage, err error) {
+func parseLine(line string, maxTagDataLength int, truncateLen int) (ircmsg IRCMessage, err error) {
 	// remove either \n or \r\n from the end of the line:
 	line = strings.TrimSuffix(line, "\n")
 	line = strings.TrimSuffix(line, "\r")
 	// whether we removed them ourselves, or whether they were removed previously,
 	// they count against the line limit:
-	if maxLenBody != 0 {
-		if maxLenBody <= 2 {
+	if truncateLen != 0 {
+		if truncateLen <= 2 {
 			return ircmsg, ErrorLineIsEmpty
 		}
-		maxLenBody -= 2
+		truncateLen -= 2
 	}
 	// now validate for the 3 forbidden bytes:
 	if strings.IndexByte(line, '\x00') != -1 || strings.IndexByte(line, '\n') != -1 || strings.IndexByte(line, '\r') != -1 {
@@ -220,8 +220,9 @@ func parseLine(line string, maxTagDataLength int, maxLenBody int) (ircmsg IRCMes
 	}
 
 	// truncate if desired
-	if maxLenBody != 0 && maxLenBody < len(line) {
+	if truncateLen != 0 && truncateLen < len(line) {
 		err = ErrorBodyTooLong
+		line = line[:truncateLen]
 	}
 
 	// modern: "These message parts, and parameters themselves, are separated
