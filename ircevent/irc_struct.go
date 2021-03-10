@@ -24,6 +24,15 @@ type callbackPair struct {
 	callback Callback
 }
 
+type BatchCallback func(*Batch) bool
+
+type batchCallbackPair struct {
+	id       uint64
+	callback BatchCallback
+}
+
+type LabelCallback func(*Batch)
+
 type capResult struct {
 	capName string
 	ack     bool
@@ -77,9 +86,11 @@ type Connection struct {
 	// Connect() builds these with sufficient capacity to receive all expected
 	// responses during negotiation. Sends to them are nonblocking, so anything
 	// sent outside of negotiation will not cause the relevant callbacks to block.
-	welcomeChan chan empty      // signals that we got 001 and we are now connected
-	saslChan    chan saslResult // transmits the final outcome of SASL negotiation
-	capsChan    chan capResult  // transmits the final status of each CAP negotiated
+	welcomeChan     chan empty      // signals that we got 001 and we are now connected
+	saslChan        chan saslResult // transmits the final outcome of SASL negotiation
+	capsChan        chan capResult  // transmits the final status of each CAP negotiated
+	batchNegotiated bool
+	labelNegotiated bool
 
 	// callback state
 	eventsMutex sync.Mutex
@@ -89,14 +100,49 @@ type Connection struct {
 	// if we add a callback in two places we might reuse the number (XXX)
 	callbackCounter uint64
 	// did we initialize the callbacks needed for the library itself?
+	batchCallbacks   []batchCallbackPair
 	hasBaseCallbacks bool
+
+	batchMutex     sync.Mutex
+	batches        map[string]batchInProgress
+	labelCallbacks map[int64]pendingLabel
+	labelCounter   int64
 
 	Log *log.Logger
 }
 
-// A struct to represent an event.
+type batchInProgress struct {
+	createdAt time.Time
+	label     int64
+	// needs to be heap-allocated so we can append to batch.Items:
+	batch *Batch
+}
+
+type pendingLabel struct {
+	createdAt time.Time
+	callback  LabelCallback
+}
+
+// Event represents an individual IRC line.
 type Event struct {
 	ircmsg.IRCMessage
+}
+
+// Batch represents an IRCv3 batch, or a line within one. There are
+// two cases:
+// 1. (Batch).Command == "BATCH". This indicates the start of an IRCv3
+// batch; the embedded IRCMessage is the initial BATCH command, which
+// may contain tags that pertain to the batch as a whole. (Batch).Items
+// contains zero or more *Batch elements, pointing to the contents of
+// the batch in order.
+// 2. (Batch).Command != "BATCH". This is an ordinary IRC line; its
+// tags, command, and parameters are available as members of the embedded
+// IRCMessage.
+// In the context of labeled-response, there is a third case: a `nil`
+// value of *Batch indicates that the server failed to respond in time.
+type Batch struct {
+	ircmsg.IRCMessage
+	Items []*Batch
 }
 
 // Retrieve the last message from Event arguments.

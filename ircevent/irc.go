@@ -55,6 +55,8 @@ var (
 	ServerDisconnected = errors.New("Disconnected by server")
 	SASLFailed         = errors.New("SASL setup timed out. Does the server support SASL?")
 
+	CapabilityNotNegotiated = errors.New("The IRCv3 capability required for this was not negotiated")
+
 	serverDidNotQuit = errors.New("server did not respond to QUIT")
 	clientHasQuit    = errors.New("client has called Quit()")
 )
@@ -110,6 +112,8 @@ func (irc *Connection) readLoop() {
 	errChan := make(chan error)
 	go readMsgLoop(irc.socket, irc.MaxLineLen, msgChan, errChan, irc.end)
 
+	lastExpireCheck := time.Now()
+
 	for {
 		select {
 		case <-irc.end:
@@ -128,6 +132,11 @@ func (irc *Connection) readLoop() {
 		case err := <-errChan:
 			irc.setError(err)
 			return
+		}
+
+		if irc.labelNegotiated && time.Since(lastExpireCheck) > irc.Timeout {
+			irc.expireLabels(false)
+			lastExpireCheck = time.Now()
 		}
 	}
 }
@@ -297,6 +306,8 @@ func (irc *Connection) waitForStop() {
 	if irc.socket != nil {
 		irc.socket.Close()
 	}
+
+	irc.expireLabels(true)
 }
 
 // Quit the current connection and disconnect from the server
@@ -357,6 +368,27 @@ func (irc *Connection) SendWithTags(tags map[string]string, command string, para
 // Send an IRC message without tags.
 func (irc *Connection) Send(command string, params ...string) error {
 	return irc.SendWithTags(nil, command, params...)
+}
+
+// SendWithLabel sends an IRC message using the IRCv3 labeled-response specification.
+// Instead of being processed by normal event handlers, the server response to the
+// command will be collected into a *Batch and passed to the provided callback.
+// If the server fails to respond correctly, the callback will be invoked with `nil`
+// as the argument.
+func (irc *Connection) SendWithLabel(callback func(*Batch), tags map[string]string, command string, params ...string) error {
+	if !irc.labelNegotiated {
+		return CapabilityNotNegotiated
+	}
+
+	label := irc.registerLabel(callback)
+
+	msg := ircmsg.MakeMessage(tags, "", command, params...)
+	msg.SetTag("label", label)
+	err := irc.SendIRCMessage(msg)
+	if err != nil {
+		irc.unregisterLabel(label)
+	}
+	return err
 }
 
 // Send a raw string.
@@ -603,6 +635,11 @@ func (irc *Connection) Connect() (err error) {
 	irc.capsAcked = make(map[string]string)
 	irc.capsAdvertised = nil
 	irc.stateMutex.Unlock()
+	irc.batchMutex.Lock()
+	irc.batches = make(map[string]batchInProgress)
+	irc.labelCallbacks = make(map[int64]pendingLabel)
+	irc.labelCounter = 0
+	irc.batchMutex.Unlock()
 
 	go irc.readLoop()
 	go irc.writeLoop()
@@ -659,6 +696,9 @@ func (irc *Connection) negotiateCaps() error {
 		for _, c := range acknowledgedCaps {
 			irc.capsAcked[c] = irc.capsAdvertised[c]
 		}
+		_, irc.batchNegotiated = irc.capsAcked["batch"]
+		_, labelNegotiated := irc.capsAcked["labeled-response"]
+		irc.labelNegotiated = irc.batchNegotiated && labelNegotiated
 	}()
 
 	irc.Send("CAP", "LS", "302")
