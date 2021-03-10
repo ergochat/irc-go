@@ -628,7 +628,9 @@ func (irc *Connection) unregisterLabel(labelStr string) {
 }
 
 // expire open batches from the server that weren't closed in a
-// timely fashion
+// timely fashion. `force` expires all label callbacks regardless
+// of time created (so they can be cleaned up when the connection
+// fails).
 func (irc *Connection) expireBatches(force bool) {
 	var failedCallbacks []LabelCallback
 	defer func() {
@@ -649,7 +651,7 @@ func (irc *Connection) expireBatches(force bool) {
 	}
 
 	for batchID, bip := range irc.batches {
-		if force || now.Sub(bip.createdAt) > irc.KeepAlive {
+		if now.Sub(bip.createdAt) > irc.KeepAlive {
 			delete(irc.batches, batchID)
 		}
 	}
