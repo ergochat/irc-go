@@ -124,22 +124,20 @@ func TestNestedBatch(t *testing.T) {
 	irc.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", multilineName, chathistoryName, playbackCap}
 	channel := fmt.Sprintf("#%s", randomString())
 
-	irc.AddConnectCallback(func(e Event) {
-		irc.Join(channel)
-		irc.Privmsg(channel, "hi")
-		irc.Send("BATCH", "+123", "draft/multiline", channel)
-		irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "hello")
-		irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "")
-		irc.SendWithTags(map[string]string{"batch": "123", concatTag: ""}, "PRIVMSG", channel, "how is ")
-		irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "everyone?")
-		irc.Send("BATCH", "-123")
-	})
-
 	err := irc.Connect()
 	if err != nil {
 		t.Fatalf("labeled response connection failed: %s", err)
 	}
 	go irc.Loop()
+
+	irc.Join(channel)
+	irc.Privmsg(channel, "hi")
+	irc.Send("BATCH", "+123", "draft/multiline", channel)
+	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "hello")
+	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "")
+	irc.SendWithTags(map[string]string{"batch": "123", concatTag: ""}, "PRIVMSG", channel, "how is ")
+	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "everyone?")
+	irc.Send("BATCH", "-123")
 
 	var historyBatch *Batch
 	event := make(chan empty)
@@ -241,12 +239,11 @@ func TestBatchHandlers(t *testing.T) {
 		alice.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "everyone?")
 		alice.Send("BATCH", "-123")
 		synchronize(alice)
+		synchronize(bob)
 	}
 	multilineMessageValue := "hello\n\nhow is everyone?"
 
 	sendMultiline()
-	synchronize(alice)
-	synchronize(bob)
 
 	assertEqual(alicePrivmsgCount, 0)
 	alicePrivmsgCount = 0
@@ -258,8 +255,6 @@ func TestBatchHandlers(t *testing.T) {
 
 	aliceUnderstandsBatches = false
 	sendMultiline()
-	synchronize(alice)
-	synchronize(bob)
 
 	// disabled alice's batch handler, she should see a flattened batch
 	assertEqual(alicePrivmsgCount, 4)
