@@ -134,8 +134,8 @@ func (irc *Connection) readLoop() {
 			return
 		}
 
-		if irc.labelNegotiated && time.Since(lastExpireCheck) > irc.Timeout {
-			irc.expireLabels(false)
+		if irc.batchNegotiated && time.Since(lastExpireCheck) > irc.Timeout {
+			irc.expireBatches(false)
 			lastExpireCheck = time.Now()
 		}
 	}
@@ -307,7 +307,7 @@ func (irc *Connection) waitForStop() {
 		irc.socket.Close()
 	}
 
-	irc.expireLabels(true)
+	irc.expireBatches(true)
 }
 
 // Quit the current connection and disconnect from the server

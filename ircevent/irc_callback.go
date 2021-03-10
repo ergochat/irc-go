@@ -627,7 +627,9 @@ func (irc *Connection) unregisterLabel(labelStr string) {
 	delete(irc.labelCallbacks, label)
 }
 
-func (irc *Connection) expireLabels(force bool) {
+// expire open batches from the server that weren't closed in a
+// timely fashion
+func (irc *Connection) expireBatches(force bool) {
 	var failedCallbacks []LabelCallback
 	defer func() {
 		for _, bcb := range failedCallbacks {
