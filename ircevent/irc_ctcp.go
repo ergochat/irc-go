@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
-func eventRewriteCTCP(event *Event) {
+func eventRewriteCTCP(event *ircmsg.Message) {
 	// XXX rewrite event.Command for CTCP
 	if !(event.Command == "PRIVMSG" && len(event.Params) == 2 && strings.HasPrefix(event.Params[1], "\x01")) {
 		return
@@ -44,21 +46,23 @@ func eventRewriteCTCP(event *Event) {
 }
 
 func (irc *Connection) setupCTCPCallbacks() {
-	irc.AddCallback("CTCP_VERSION", func(e Event) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01VERSION %s\x01", e.Nick(), irc.Version))
+	irc.AddCallback("CTCP_VERSION", func(e ircmsg.Message) {
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01VERSION %s\x01", ExtractNick(e.Prefix), irc.Version))
 	})
 
-	irc.AddCallback("CTCP_USERINFO", func(e Event) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01USERINFO %s\x01", e.Nick(), irc.User))
+	irc.AddCallback("CTCP_USERINFO", func(e ircmsg.Message) {
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01USERINFO %s\x01", ExtractNick(e.Prefix), irc.User))
 	})
 
-	irc.AddCallback("CTCP_CLIENTINFO", func(e Event) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01CLIENTINFO PING VERSION TIME USERINFO CLIENTINFO\x01", e.Nick()))
+	irc.AddCallback("CTCP_CLIENTINFO", func(e ircmsg.Message) {
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01CLIENTINFO PING VERSION TIME USERINFO CLIENTINFO\x01", ExtractNick(e.Prefix)))
 	})
 
-	irc.AddCallback("CTCP_TIME", func(e Event) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01TIME %s\x01", e.Nick(), time.Now().UTC().Format(time.RFC1123)))
+	irc.AddCallback("CTCP_TIME", func(e ircmsg.Message) {
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01TIME %s\x01", ExtractNick(e.Prefix), time.Now().UTC().Format(time.RFC1123)))
 	})
 
-	irc.AddCallback("CTCP_PING", func(e Event) { irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01%s\x01", e.Nick(), e.Message())) })
+	irc.AddCallback("CTCP_PING", func(e ircmsg.Message) {
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01%s\x01", ExtractNick(e.Prefix), e.Params[1]))
+	})
 }

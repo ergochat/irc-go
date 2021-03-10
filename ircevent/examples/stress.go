@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/goshuirc/irc-go/ircevent"
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 /*
@@ -48,11 +49,11 @@ func main() {
 		RequestCaps: []string{"server-time", "echo-message"},
 	}
 
-	irc.AddCallback("001", func(e ircevent.Event) { irc.Join(channel) })
-	irc.AddCallback("JOIN", func(e ircevent.Event) { irc.Privmsg(channel, "hi there friend!") })
+	irc.AddCallback("001", func(e ircmsg.Message) { irc.Join(channel) })
+	irc.AddCallback("JOIN", func(e ircmsg.Message) { irc.Privmsg(channel, "hi there friend!") })
 	// echo whatever we get back
 	count := 0
-	irc.AddCallback("PRIVMSG", func(e ircevent.Event) {
+	irc.AddCallback("PRIVMSG", func(e ircmsg.Message) {
 		if limit != 0 && count >= limit {
 			irc.Quit()
 		} else {

@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"testing"
+
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 const (
@@ -21,7 +23,7 @@ func TestLabeledResponse(t *testing.T) {
 	irccon.RequestCaps = []string{"message-tags", "batch", "labeled-response"}
 	irccon.RealName = "ecf61da38b58"
 	results := make(map[string]string)
-	irccon.AddConnectCallback(func(e Event) {
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
 		irccon.SendWithLabel(func(batch *Batch) {
 			if batch == nil {
 				return
@@ -192,7 +194,7 @@ func TestBatchHandlers(t *testing.T) {
 		}
 		return false
 	})
-	alice.AddCallback("PRIVMSG", func(e Event) {
+	alice.AddCallback("PRIVMSG", func(e ircmsg.Message) {
 		alicePrivmsgCount++
 	})
 

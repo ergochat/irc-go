@@ -142,7 +142,7 @@ func (irc *Connection) readLoop() {
 }
 
 func readMsgLoop(socket net.Conn, maxLineLen int, msgChan chan string, errChan chan error, end chan empty) {
-	var reader ircreader.IRCReader
+	var reader ircreader.Reader
 	reader.Initialize(socket, 1024, maxLineLen+maxlenTags)
 	for {
 		msgBytes, err := reader.ReadLine()
@@ -348,8 +348,8 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	}
 }
 
-// Send a built ircmsg.IRCMessage.
-func (irc *Connection) SendIRCMessage(msg ircmsg.IRCMessage) error {
+// Send a built ircmsg.Message.
+func (irc *Connection) SendIRCMessage(msg ircmsg.Message) error {
 	b, err := msg.LineBytesStrict(true, irc.MaxLineLen)
 	if err != nil {
 		if irc.Debug {

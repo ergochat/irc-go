@@ -11,12 +11,12 @@ import (
 
 type testcode struct {
 	raw     string
-	message IRCMessage
+	message Message
 }
 type testcodewithlen struct {
 	raw              string
 	length           int
-	message          IRCMessage
+	message          Message
 	truncateExpected bool
 }
 
@@ -256,7 +256,7 @@ func TestEncodeErrors(t *testing.T) {
 	}
 }
 
-var testMessages = []IRCMessage{
+var testMessages = []Message{
 	{
 		tags:           map[string]string{"time": "2019-02-27T04:38:57.489Z", "account": "dan-"},
 		clientOnlyTags: map[string]string{"+status": "typing"},
@@ -329,7 +329,7 @@ func TestEncodeDecode(t *testing.T) {
 }
 
 func TestForceTrailing(t *testing.T) {
-	message := IRCMessage{
+	message := Message{
 		Prefix:  "shivaram",
 		Command: "PRIVMSG",
 		Params:  []string{"#darwin", "nice"},
@@ -352,7 +352,7 @@ func TestForceTrailing(t *testing.T) {
 }
 
 func TestErrorLineTooLongGeneration(t *testing.T) {
-	message := IRCMessage{
+	message := Message{
 		tags:    map[string]string{"draft/msgid": "SAXV5OYJUr18CNJzdWa1qQ"},
 		Prefix:  "shivaram",
 		Command: "PRIVMSG",

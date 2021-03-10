@@ -27,7 +27,7 @@ func connForTesting(nick, user string, tls bool) *Connection {
 	return irc
 }
 
-func mockEvent(command string) ircmsg.IRCMessage {
+func mockEvent(command string) ircmsg.Message {
 	return ircmsg.MakeMessage(nil, ":server.name", command)
 }
 
@@ -37,9 +37,9 @@ func TestRemoveCallback(t *testing.T) {
 
 	done := make(chan int, 10)
 
-	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
-	id := irccon.AddCallback("TEST", func(e Event) { done <- 2 })
-	irccon.AddCallback("TEST", func(e Event) { done <- 3 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 1 })
+	id := irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 2 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 3 })
 
 	// Should remove callback at index 1
 	irccon.RemoveCallback(id)
@@ -62,11 +62,11 @@ func TestClearCallback(t *testing.T) {
 
 	done := make(chan int, 10)
 
-	irccon.AddCallback("TEST", func(e Event) { done <- 0 })
-	irccon.AddCallback("TEST", func(e Event) { done <- 1 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 0 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 1 })
 	irccon.ClearCallback("TEST")
-	irccon.AddCallback("TEST", func(e Event) { done <- 2 })
-	irccon.AddCallback("TEST", func(e Event) { done <- 3 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 2 })
+	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 3 })
 
 	irccon.runCallbacks(mockEvent("TEST"))
 
@@ -106,10 +106,10 @@ func TestConnection(t *testing.T) {
 	teststr := randStr(20)
 	testmsgok := make(chan bool, 1)
 
-	irccon1.AddCallback("001", func(e Event) { irccon1.Join(channel) })
-	irccon2.AddCallback("001", func(e Event) { irccon2.Join(channel) })
-	irccon1.AddCallback("366", func(e Event) {
-		go func(e Event) {
+	irccon1.AddCallback("001", func(e ircmsg.Message) { irccon1.Join(channel) })
+	irccon2.AddCallback("001", func(e ircmsg.Message) { irccon2.Join(channel) })
+	irccon1.AddCallback("366", func(e ircmsg.Message) {
+		go func(e ircmsg.Message) {
 			tick := time.NewTicker(1 * time.Second)
 			i := 10
 			for {
@@ -131,14 +131,14 @@ func TestConnection(t *testing.T) {
 		}(e)
 	})
 
-	irccon2.AddCallback("366", func(e Event) {
+	irccon2.AddCallback("366", func(e ircmsg.Message) {
 		ircnick2 = randStr(8)
 		irccon2.SetNick(ircnick2)
 	})
 
-	irccon2.AddCallback("PRIVMSG", func(e Event) {
-		if e.Message() == teststr {
-			if e.Nick() == ircnick1 {
+	irccon2.AddCallback("PRIVMSG", func(e ircmsg.Message) {
+		if e.Params[1] == teststr {
+			if ExtractNick(e.Prefix) == ircnick1 {
 				testmsgok <- true
 				irccon2.Quit()
 			} else {
@@ -150,8 +150,8 @@ func TestConnection(t *testing.T) {
 		}
 	})
 
-	irccon2.AddCallback("NICK", func(e Event) {
-		if !(e.Nick() == ircnick2orig && e.Message() == ircnick2) {
+	irccon2.AddCallback("NICK", func(e ircmsg.Message) {
+		if !(ExtractNick(e.Prefix) == ircnick2orig && e.Params[0] == ircnick2) {
 			t.Errorf("Nick change did not work!")
 		}
 	})
@@ -181,9 +181,9 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 	debugTest(irccon)
 
 	connects := 0
-	irccon.AddCallback("001", func(e Event) { irccon.Join(channel) })
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join(channel) })
 
-	irccon.AddCallback("366", func(e Event) {
+	irccon.AddCallback("366", func(e ircmsg.Message) {
 		connects += 1
 		if connects > 2 {
 			irccon.Privmsgf(channel, "Connection nr %d (test done)", connects)
@@ -226,9 +226,9 @@ func TestConnectionSSL(t *testing.T) {
 	debugTest(irccon)
 	irccon.UseTLS = true
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-	irccon.AddCallback("001", func(e Event) { irccon.Join(channel) })
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join(channel) })
 
-	irccon.AddCallback("366", func(e Event) {
+	irccon.AddCallback("366", func(e ircmsg.Message) {
 		irccon.Privmsg(channel, "Test Message from SSL")
 		irccon.Quit()
 	})
@@ -284,8 +284,8 @@ func TestConnectionNickInUse(t *testing.T) {
 	n2 := make(chan string, 1)
 
 	// check the actual nick after 001 is processed
-	irccon1.AddCallback("002", func(e Event) { n1 <- irccon1.CurrentNick() })
-	irccon2.AddCallback("002", func(e Event) { n2 <- irccon2.CurrentNick() })
+	irccon1.AddCallback("002", func(e ircmsg.Message) { n1 <- irccon1.CurrentNick() })
+	irccon2.AddCallback("002", func(e ircmsg.Message) { n2 <- irccon2.CurrentNick() })
 
 	err := irccon1.Connect()
 	if err != nil {
@@ -318,7 +318,7 @@ func TestConnectionCallbacks(t *testing.T) {
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 	debugTest(irccon1)
 	resultChan := make(chan map[string]string, 1)
-	irccon1.AddConnectCallback(func(e Event) {
+	irccon1.AddConnectCallback(func(e ircmsg.Message) {
 		resultChan <- irccon1.ISupport()
 	})
 	err := irccon1.Connect()

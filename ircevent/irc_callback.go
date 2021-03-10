@@ -23,10 +23,10 @@ type CallbackID struct {
 }
 
 // Register a callback to a connection and event code. A callback is a function
-// which takes only an Event object as parameter. Valid event codes are all
+// which takes only an ircmsg.Message object as parameter. Valid event codes are all
 // IRC/CTCP commands and error/response codes. This function returns the ID of the
 // registered callback for later management.
-func (irc *Connection) AddCallback(eventCode string, callback func(Event)) CallbackID {
+func (irc *Connection) AddCallback(eventCode string, callback func(ircmsg.Message)) CallbackID {
 	return irc.addCallback(eventCode, Callback(callback), false, 0)
 }
 
@@ -103,7 +103,7 @@ func (irc *Connection) ClearCallback(eventcode string) {
 }
 
 // Replace callback i (ID) associated with a given event code with a new callback function.
-func (irc *Connection) ReplaceCallback(id CallbackID, callback func(Event)) bool {
+func (irc *Connection) ReplaceCallback(id CallbackID, callback func(ircmsg.Message)) bool {
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
 
@@ -153,7 +153,7 @@ func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
 // Convenience function to add a callback that will be called once the
 // connection is completed (this is traditionally referred to as "connection
 // registration").
-func (irc *Connection) AddConnectCallback(callback func(Event)) (id CallbackID) {
+func (irc *Connection) AddConnectCallback(callback func(ircmsg.Message)) (id CallbackID) {
 	// XXX: forcibly use the same ID number for both copies of the callback
 	id376 := irc.AddCallback(RPL_ENDOFMOTD, callback)
 	irc.addCallback(ERR_NOMOTD, callback, false, id376.id)
@@ -184,7 +184,7 @@ var (
 	errorUnknownLabel     = errors.New("received labeled response from server, but we don't recognize the label")
 )
 
-func (irc *Connection) handleBatchCommand(msg ircmsg.IRCMessage) {
+func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 	if len(msg.Params) < 1 || len(msg.Params[0]) < 2 {
 		irc.Log.Printf("Invalid BATCH command from server\n")
 		return
@@ -214,7 +214,7 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.IRCMessage) {
 				return
 			}
 			batchObj := new(Batch)
-			batchObj.IRCMessage = msg
+			batchObj.Message = msg
 			irc.batches[batchID] = batchInProgress{
 				createdAt: time.Now(),
 				batch:     batchObj,
@@ -295,14 +295,14 @@ func (irc *Connection) HandleBatch(batch *Batch) {
 // recursively "flatten" the nested batch; process every command individually
 func (irc *Connection) handleBatchNaively(batch *Batch) {
 	if batch.Command != "BATCH" {
-		irc.HandleEvent(Event{IRCMessage: batch.IRCMessage})
+		irc.HandleMessage(batch.Message)
 	}
 	for _, item := range batch.Items {
 		irc.handleBatchNaively(item)
 	}
 }
 
-func (irc *Connection) handleBatchedCommand(msg ircmsg.IRCMessage, batchID string) {
+func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string) {
 	irc.batchMutex.Lock()
 	defer irc.batchMutex.Unlock()
 
@@ -311,11 +311,11 @@ func (irc *Connection) handleBatchedCommand(msg ircmsg.IRCMessage, batchID strin
 		irc.Log.Printf("ignoring command with unknown batch ID %s\n", batchID)
 		return
 	}
-	bip.batch.Items = append(bip.batch.Items, &Batch{IRCMessage: msg})
+	bip.batch.Items = append(bip.batch.Items, &Batch{Message: msg})
 }
 
 // Execute all callbacks associated with a given event.
-func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
+func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	if !irc.AllowPanic {
 		defer func() {
 			if r := recover(); r != nil {
@@ -347,7 +347,7 @@ func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 				return
 			} else {
 				labelCallback(&Batch{
-					IRCMessage: msg,
+					Message: msg,
 				})
 			}
 			return
@@ -355,12 +355,12 @@ func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 	}
 
 	// OK, it's a normal IRC command
-	irc.HandleEvent(Event{IRCMessage: msg})
+	irc.HandleMessage(msg)
 }
 
-// HandleEvent handles an IRC line using the available handlers. This can be
+// HandleMessage handles an IRC line using the available handlers. This can be
 // used in a batch or labeled-response callback to process an individual line.
-func (irc *Connection) HandleEvent(event Event) {
+func (irc *Connection) HandleMessage(event ircmsg.Message) {
 	if irc.EnableCTCP {
 		eventRewriteCTCP(&event)
 	}
@@ -386,12 +386,10 @@ func (irc *Connection) setupCallbacks() {
 	}
 
 	// PING: we must respond with the correct PONG
-	irc.AddCallback("PING", func(e Event) { irc.Send("PONG", e.Message()) })
+	irc.AddCallback("PING", func(e ircmsg.Message) { irc.Send("PONG", lastParam(&e)) })
 
 	// PONG: record time to make sure the server is responding to us
-	irc.AddCallback("PONG", func(e Event) {
-		irc.recordPong(e.Message())
-	})
+	irc.AddCallback("PONG", func(e ircmsg.Message) { irc.recordPong(lastParam(&e)) })
 
 	// 433: ERR_NICKNAMEINUSE "<nick> :Nickname is already in use"
 	// 437: ERR_UNAVAILRESOURCE "<nick/channel> :Nick/channel is temporarily unavailable"
@@ -406,13 +404,13 @@ func (irc *Connection) setupCallbacks() {
 	irc.AddCallback(RPL_ISUPPORT, irc.handleISupport)
 
 	// respond to NICK from the server (in response to our own NICK, or sent unprompted)
-	irc.AddCallback("NICK", func(e Event) {
-		if e.Nick() == irc.CurrentNick() && len(e.Params) > 0 {
+	irc.AddCallback("NICK", func(e ircmsg.Message) {
+		if ExtractNick(e.Prefix) == irc.CurrentNick() && len(e.Params) > 0 {
 			irc.setCurrentNick(e.Params[0])
 		}
 	})
 
-	irc.AddCallback("ERROR", func(e Event) {
+	irc.AddCallback("ERROR", func(e ircmsg.Message) {
 		if !irc.isQuitting() {
 			irc.Log.Printf("ERROR received from server: %s", strings.Join(e.Params, " "))
 		}
@@ -438,7 +436,7 @@ func (irc *Connection) setupCallbacks() {
 	irc.AddCallback("NOTE", irc.handleStandardReplies)
 }
 
-func (irc *Connection) handleRplWelcome(e Event) {
+func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
 
@@ -448,7 +446,7 @@ func (irc *Connection) handleRplWelcome(e Event) {
 	}
 }
 
-func (irc *Connection) handleRegistration(e Event) {
+func (irc *Connection) handleRegistration(e ircmsg.Message) {
 	// wake up Connect() if applicable
 	defer func() {
 		select {
@@ -471,7 +469,7 @@ func (irc *Connection) handleRegistration(e Event) {
 
 }
 
-func (irc *Connection) handleUnavailableNick(e Event) {
+func (irc *Connection) handleUnavailableNick(e ircmsg.Message) {
 	// only try to change the nick if we're not registered yet,
 	// otherwise we'll change in response to pingLoop unsuccessfully
 	// trying to restore the intended nick (swapping one undesired nick
@@ -489,7 +487,7 @@ func (irc *Connection) handleUnavailableNick(e Event) {
 	}
 }
 
-func (irc *Connection) handleISupport(e Event) {
+func (irc *Connection) handleISupport(e ircmsg.Message) {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
 
@@ -530,7 +528,7 @@ func unescapeISupportValue(in string) (out string) {
 	return buf.String()
 }
 
-func (irc *Connection) handleCAP(e Event) {
+func (irc *Connection) handleCAP(e ircmsg.Message) {
 	if len(e.Params) < 3 {
 		return
 	}
@@ -666,7 +664,7 @@ func splitCAPToken(token string) (name, value string) {
 	}
 }
 
-func (irc *Connection) handleStandardReplies(e Event) {
+func (irc *Connection) handleStandardReplies(e ircmsg.Message) {
 	// unconditionally print messages for FAIL and WARN;
 	// re. NOTE, if debug is enabled, we print the raw line anyway
 	switch e.Command {
