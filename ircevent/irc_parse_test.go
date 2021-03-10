@@ -1,6 +1,8 @@
 package ircevent
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -19,18 +21,18 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func assertEqual(found, expected string, t *testing.T) {
-	if found != expected {
-		t.Errorf("expected `%s`, got `%s`\n", expected, found)
+func assertEqual(found, expected interface{}) {
+	if !reflect.DeepEqual(found, expected) {
+		panic(fmt.Sprintf("expected `%#v`, got `%#v`\n", expected, found))
 	}
 }
 
 func TestUnescapeIsupport(t *testing.T) {
-	assertEqual(unescapeISupportValue(""), "", t)
-	assertEqual(unescapeISupportValue("a"), "a", t)
-	assertEqual(unescapeISupportValue(`\x20`), " ", t)
-	assertEqual(unescapeISupportValue(`\x20b`), " b", t)
-	assertEqual(unescapeISupportValue(`a\x20`), "a ", t)
-	assertEqual(unescapeISupportValue(`a\x20b`), "a b", t)
-	assertEqual(unescapeISupportValue(`\x20\x20`), "  ", t)
+	assertEqual(unescapeISupportValue(""), "")
+	assertEqual(unescapeISupportValue("a"), "a")
+	assertEqual(unescapeISupportValue(`\x20`), " ")
+	assertEqual(unescapeISupportValue(`\x20b`), " b")
+	assertEqual(unescapeISupportValue(`a\x20`), "a ")
+	assertEqual(unescapeISupportValue(`a\x20b`), "a b")
+	assertEqual(unescapeISupportValue(`\x20\x20`), "  ")
 }

@@ -1,11 +1,12 @@
 package ircevent
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goshuirc/irc-go/ircmsg"
 )
@@ -31,7 +32,7 @@ func (irc *Connection) AddCallback(eventCode string, callback func(Event)) Callb
 
 func (irc *Connection) addCallback(eventCode string, callback Callback, prepend bool, idNum uint64) CallbackID {
 	eventCode = strings.ToUpper(eventCode)
-	if eventCode == "" || strings.HasPrefix(eventCode, "*") {
+	if eventCode == "" || strings.HasPrefix(eventCode, "*") || eventCode == "BATCH" {
 		return CallbackID{}
 	}
 
@@ -71,6 +72,8 @@ func (irc *Connection) RemoveCallback(id CallbackID) {
 	case registrationEvent:
 		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
 		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
+	case "BATCH":
+		irc.removeBatchCallbackNoMutex(id.id)
 	default:
 		irc.removeCallbackNoMutex(id.eventCode, id.id)
 	}
@@ -114,6 +117,39 @@ func (irc *Connection) ReplaceCallback(id CallbackID, callback func(Event)) bool
 	return false
 }
 
+// AddBatchCallback adds a callback for handling BATCH'ed server responses.
+// All available BATCH callbacks will be invoked in an undefined order,
+// stopping at the first one to return a value of true (indicating successful
+// processing). If no batch callback returns true, the batch will be "flattened"
+// (i.e., its messages will be processed individually by the normal event
+// handlers). Batch callbacks can be removed as usual with RemoveCallback.
+func (irc *Connection) AddBatchCallback(callback func(*Batch) bool) CallbackID {
+	irc.eventsMutex.Lock()
+	defer irc.eventsMutex.Unlock()
+
+	idNum := irc.callbackCounter
+	irc.callbackCounter++
+	nbc := make([]batchCallbackPair, len(irc.batchCallbacks)+1)
+	copy(nbc, irc.batchCallbacks)
+	nbc[len(nbc)-1] = batchCallbackPair{id: idNum, callback: callback}
+	irc.batchCallbacks = nbc
+	return CallbackID{eventCode: "BATCH", id: idNum}
+}
+
+func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
+	current := irc.batchCallbacks
+	if len(current) == 0 {
+		return
+	}
+	newList := make([]batchCallbackPair, 0, len(current)-1)
+	for _, p := range current {
+		if p.id != idNum {
+			newList = append(newList, p)
+		}
+	}
+	irc.batchCallbacks = newList
+}
+
 // Convenience function to add a callback that will be called once the
 // connection is completed (this is traditionally referred to as "connection
 // registration").
@@ -132,18 +168,199 @@ func (irc *Connection) getCallbacks(code string) (result []callbackPair) {
 	return irc.events[code]
 }
 
+func (irc *Connection) getBatchCallbacks() (result []batchCallbackPair) {
+	irc.eventsMutex.Lock()
+	defer irc.eventsMutex.Unlock()
+
+	return irc.batchCallbacks
+}
+
+var (
+	// ad-hoc internal errors for batch processing
+	// these indicate invalid data from the server (or else local corruption)
+	errorDuplicateBatchID = errors.New("found duplicate batch ID")
+	errorNoParentBatchID  = errors.New("parent batch ID not found")
+	errorBatchNotOpen     = errors.New("tried to close batch, but batch ID not found")
+	errorUnknownLabel     = errors.New("received labeled response from server, but we don't recognize the label")
+)
+
+func (irc *Connection) handleBatchCommand(msg ircmsg.IRCMessage) {
+	if len(msg.Params) < 1 || len(msg.Params[0]) < 2 {
+		irc.Log.Printf("Invalid BATCH command from server\n")
+		return
+	}
+
+	start := msg.Params[0][0] == '+'
+	if !start && msg.Params[0][0] != '-' {
+		irc.Log.Printf("Invalid BATCH ID from server: %s\n", msg.Params[0])
+		return
+	}
+	batchID := msg.Params[0][1:]
+	isNested, parentBatchID := msg.GetTag("batch")
+	var label int64
+	if start {
+		if present, labelStr := msg.GetTag("label"); present {
+			label = deserializeLabel(labelStr)
+		}
+	}
+
+	finishedBatch, callback, err := func() (finishedBatch *Batch, callback LabelCallback, err error) {
+		irc.batchMutex.Lock()
+		defer irc.batchMutex.Unlock()
+
+		if start {
+			if _, ok := irc.batches[batchID]; ok {
+				err = errorDuplicateBatchID
+				return
+			}
+			batchObj := new(Batch)
+			batchObj.IRCMessage = msg
+			irc.batches[batchID] = batchInProgress{
+				createdAt: time.Now(),
+				batch:     batchObj,
+				label:     label,
+			}
+			if isNested {
+				parentBip := irc.batches[parentBatchID]
+				if parentBip.batch == nil {
+					err = errorNoParentBatchID
+					return
+				}
+				parentBip.batch.Items = append(parentBip.batch.Items, batchObj)
+			}
+		} else {
+			bip := irc.batches[batchID]
+			if bip.batch == nil {
+				err = errorBatchNotOpen
+				return
+			}
+			delete(irc.batches, batchID)
+			if !isNested {
+				finishedBatch = bip.batch
+				if bip.label != 0 {
+					callback = irc.getLabelCallbackNoMutex(bip.label)
+					if callback == nil {
+						err = errorUnknownLabel
+					}
+
+				}
+			}
+		}
+		return
+	}()
+
+	if err != nil {
+		irc.Log.Printf("batch error: %v (batchID=`%s`, parentBatchID=`%s`)", err, batchID, parentBatchID)
+	} else if callback != nil {
+		callback(finishedBatch)
+	} else if finishedBatch != nil {
+		irc.HandleBatch(finishedBatch)
+	}
+}
+
+func (irc *Connection) getLabelCallbackNoMutex(label int64) (callback LabelCallback) {
+	if lc, ok := irc.labelCallbacks[label]; ok {
+		callback = lc.callback
+		delete(irc.labelCallbacks, label)
+	}
+	return
+}
+
+func (irc *Connection) getLabelCallback(label int64) (callback LabelCallback) {
+	irc.batchMutex.Lock()
+	defer irc.batchMutex.Unlock()
+	return irc.getLabelCallbackNoMutex(label)
+}
+
+// HandleBatch handles a *Batch using available handlers, "flattening" it if
+// no handler succeeds. This can be used in a batch or labeled-response callback
+// to process inner batches.
+func (irc *Connection) HandleBatch(batch *Batch) {
+	if batch == nil {
+		return
+	}
+
+	success := false
+	for _, bh := range irc.getBatchCallbacks() {
+		if bh.callback(batch) {
+			success = true
+			break
+		}
+	}
+	if !success {
+		irc.handleBatchNaively(batch)
+	}
+}
+
+// recursively "flatten" the nested batch; process every command individually
+func (irc *Connection) handleBatchNaively(batch *Batch) {
+	if batch.Command != "BATCH" {
+		irc.HandleEvent(Event{IRCMessage: batch.IRCMessage})
+	}
+	for _, item := range batch.Items {
+		irc.handleBatchNaively(item)
+	}
+}
+
+func (irc *Connection) handleBatchedCommand(msg ircmsg.IRCMessage, batchID string) {
+	irc.batchMutex.Lock()
+	defer irc.batchMutex.Unlock()
+
+	bip := irc.batches[batchID]
+	if bip.batch == nil {
+		irc.Log.Printf("ignoring command with unknown batch ID %s\n", batchID)
+		return
+	}
+	bip.batch.Items = append(bip.batch.Items, &Batch{IRCMessage: msg})
+}
+
 // Execute all callbacks associated with a given event.
 func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 	if !irc.AllowPanic {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
+				irc.Log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
 			}
 		}()
 	}
 
-	event := Event{IRCMessage: msg}
+	// handle batch start or end
+	if irc.batchNegotiated {
+		if msg.Command == "BATCH" {
+			irc.handleBatchCommand(msg)
+			return
+		} else if hasBatchTag, batchID := msg.GetTag("batch"); hasBatchTag {
+			irc.handleBatchedCommand(msg, batchID)
+			return
+		}
+	}
 
+	// handle labeled single command, or labeled ACK
+	if irc.labelNegotiated {
+		if hasLabel, labelStr := msg.GetTag("label"); hasLabel {
+			var labelCallback LabelCallback
+			if label := deserializeLabel(labelStr); label != 0 {
+				labelCallback = irc.getLabelCallback(label)
+			}
+			if labelCallback == nil {
+				irc.Log.Printf("received unrecognized label from server: %s\n", labelStr)
+				return
+			} else {
+				labelCallback(&Batch{
+					IRCMessage: msg,
+				})
+			}
+			return
+		}
+	}
+
+	// OK, it's a normal IRC command
+	irc.HandleEvent(Event{IRCMessage: msg})
+}
+
+// HandleEvent handles an IRC line using the available handlers. This can be
+// used in a batch or labeled-response callback to process an individual line.
+func (irc *Connection) HandleEvent(event Event) {
 	if irc.EnableCTCP {
 		eventRewriteCTCP(&event)
 	}
@@ -386,6 +603,60 @@ func (irc *Connection) handleCAPLS(params []string) {
 	}
 }
 
+// labeled-response
+
+func (irc *Connection) registerLabel(callback LabelCallback) string {
+	irc.batchMutex.Lock()
+	defer irc.batchMutex.Unlock()
+	irc.labelCounter++ // increment first: 0 is an invalid label
+	label := irc.labelCounter
+	irc.labelCallbacks[label] = pendingLabel{
+		createdAt: time.Now(),
+		callback:  callback,
+	}
+	return serializeLabel(label)
+}
+
+func (irc *Connection) unregisterLabel(labelStr string) {
+	label := deserializeLabel(labelStr)
+	if label == 0 {
+		return
+	}
+	irc.batchMutex.Lock()
+	defer irc.batchMutex.Unlock()
+	delete(irc.labelCallbacks, label)
+}
+
+// expire open batches from the server that weren't closed in a
+// timely fashion. `force` expires all label callbacks regardless
+// of time created (so they can be cleaned up when the connection
+// fails).
+func (irc *Connection) expireBatches(force bool) {
+	var failedCallbacks []LabelCallback
+	defer func() {
+		for _, bcb := range failedCallbacks {
+			bcb(nil)
+		}
+	}()
+
+	irc.batchMutex.Lock()
+	defer irc.batchMutex.Unlock()
+	now := time.Now()
+
+	for label, lcb := range irc.labelCallbacks {
+		if force || now.Sub(lcb.createdAt) > irc.KeepAlive {
+			failedCallbacks = append(failedCallbacks, lcb.callback)
+			delete(irc.labelCallbacks, label)
+		}
+	}
+
+	for batchID, bip := range irc.batches {
+		if now.Sub(bip.createdAt) > irc.KeepAlive {
+			delete(irc.batches, batchID)
+		}
+	}
+}
+
 func splitCAPToken(token string) (name, value string) {
 	equalIdx := strings.IndexByte(token, '=')
 	if equalIdx == -1 {
@@ -402,4 +673,19 @@ func (irc *Connection) handleStandardReplies(e Event) {
 	case "FAIL", "WARN":
 		irc.Log.Printf("Received error code from server: %s %s\n", e.Command, strings.Join(e.Params, " "))
 	}
+}
+
+const (
+	labelBase = 32
+)
+
+func serializeLabel(label int64) string {
+	return strconv.FormatInt(label, labelBase)
+}
+
+func deserializeLabel(str string) int64 {
+	if p, err := strconv.ParseInt(str, labelBase, 64); err == nil {
+		return p
+	}
+	return 0
 }
