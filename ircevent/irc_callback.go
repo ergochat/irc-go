@@ -32,7 +32,7 @@ func (irc *Connection) AddCallback(eventCode string, callback func(Event)) Callb
 
 func (irc *Connection) addCallback(eventCode string, callback Callback, prepend bool, idNum uint64) CallbackID {
 	eventCode = strings.ToUpper(eventCode)
-	if eventCode == "" || strings.HasPrefix(eventCode, "*") {
+	if eventCode == "" || strings.HasPrefix(eventCode, "*") || eventCode == "BATCH" {
 		return CallbackID{}
 	}
 
