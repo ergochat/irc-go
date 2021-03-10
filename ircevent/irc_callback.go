@@ -272,6 +272,9 @@ func (irc *Connection) getLabelCallback(label int64) (callback LabelCallback) {
 	return irc.getLabelCallbackNoMutex(label)
 }
 
+// HandleBatch handles a *Batch using available handlers, "flattening" it if
+// no handler succeeds. This can be used in a batch or labeled-response callback
+// to process inner batches.
 func (irc *Connection) HandleBatch(batch *Batch) {
 	if batch == nil {
 		return
@@ -355,6 +358,8 @@ func (irc *Connection) runCallbacks(msg ircmsg.IRCMessage) {
 	irc.HandleEvent(Event{IRCMessage: msg})
 }
 
+// HandleEvent handles an IRC line using the available handlers. This can be
+// used in a batch or labeled-response callback to process an individual line.
 func (irc *Connection) HandleEvent(event Event) {
 	if irc.EnableCTCP {
 		eventRewriteCTCP(&event)
