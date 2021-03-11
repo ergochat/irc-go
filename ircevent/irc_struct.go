@@ -17,7 +17,7 @@ import (
 
 type empty struct{}
 
-type Callback func(Event)
+type Callback func(ircmsg.Message)
 
 type callbackPair struct {
 	id       uint64
@@ -65,7 +65,7 @@ type Connection struct {
 
 	// networking and synchronization
 	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
-	end        chan empty     // closing this causes the goroutines to exit (think threading.Event)
+	end        chan empty     // closing this causes the goroutines to exit
 	pwrite     chan []byte    // receives IRC lines to be sent to the socket
 	wg         sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
 	socket     net.Conn
@@ -123,74 +123,40 @@ type pendingLabel struct {
 	callback  LabelCallback
 }
 
-// Event represents an individual IRC line.
-type Event struct {
-	ircmsg.IRCMessage
-}
-
 // Batch represents an IRCv3 batch, or a line within one. There are
 // two cases:
 // 1. (Batch).Command == "BATCH". This indicates the start of an IRCv3
-// batch; the embedded IRCMessage is the initial BATCH command, which
+// batch; the embedded Message is the initial BATCH command, which
 // may contain tags that pertain to the batch as a whole. (Batch).Items
 // contains zero or more *Batch elements, pointing to the contents of
 // the batch in order.
 // 2. (Batch).Command != "BATCH". This is an ordinary IRC line; its
 // tags, command, and parameters are available as members of the embedded
-// IRCMessage.
+// Message.
 // In the context of labeled-response, there is a third case: a `nil`
 // value of *Batch indicates that the server failed to respond in time.
 type Batch struct {
-	ircmsg.IRCMessage
+	ircmsg.Message
 	Items []*Batch
 }
 
-// Retrieve the last message from Event arguments.
-// This function leaves the arguments untouched and
-// returns an empty string if there are none.
-func (e *Event) Message() string {
-	if len(e.Params) == 0 {
-		return ""
-	}
-	return e.Params[len(e.Params)-1]
-}
-
-/*
-// https://stackoverflow.com/a/10567935/6754440
-// Regex of IRC formatting.
-var ircFormat = regexp.MustCompile(`[\x02\x1F\x0F\x16\x1D\x1E]|\x03(\d\d?(,\d\d?)?)?`)
-
-// Retrieve the last message from Event arguments, but without IRC formatting (color.
-// This function leaves the arguments untouched and
-// returns an empty string if there are none.
-func (e *Event) MessageWithoutFormat() string {
-	if len(e.Arguments) == 0 {
-		return ""
-	}
-	return ircFormat.ReplaceAllString(e.Arguments[len(e.Arguments)-1], "")
-}
-*/
-
-func (e *Event) Nick() string {
-	nick, _, _ := e.splitNUH()
+func ExtractNick(source string) string {
+	nick, _, _ := SplitNUH(source)
 	return nick
 }
 
-func (e *Event) User() string {
-	_, user, _ := e.splitNUH()
-	return user
+func SplitNUH(source string) (nick, user, host string) {
+	if i, j := strings.Index(source, "!"), strings.Index(source, "@"); i > -1 && j > -1 && i < j {
+		nick = source[0:i]
+		user = source[i+1 : j]
+		host = source[j+1:]
+	}
+	return
 }
 
-func (e *Event) Host() string {
-	_, _, host := e.splitNUH()
-	return host
-}
-
-func (event *Event) splitNUH() (nick, user, host string) {
-	if i, j := strings.Index(event.Prefix, "!"), strings.Index(event.Prefix, "@"); i > -1 && j > -1 && i < j {
-		nick = event.Prefix[0:i]
-		user = event.Prefix[i+1 : j]
-		host = event.Prefix[j+1:]
+func lastParam(msg *ircmsg.Message) (result string) {
+	if 0 < len(msg.Params) {
+		return msg.Params[len(msg.Params)-1]
 	}
 	return
 }

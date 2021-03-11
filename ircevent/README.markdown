@@ -23,12 +23,12 @@ irc := ircevent.Connection{
 	RequestCaps: []string{"server-time", "message-tags"},
 }
 
-irc.AddCallback("001", func(e ircevent.Event) { irc.Join("#ircevent-test") })
+irc.AddCallback("001", func(e ircmsg.Message) { irc.Join("#ircevent-test") })
 
-irc.AddCallback("PRIVMSG", func(event ircevent.Event) {
-	//event.Message() contains the message
-	//event.Nick() Contains the sender
-	//event.Params[0] Contains the channel
+irc.AddCallback("PRIVMSG", func(event ircmsg.Message) {
+	// event.Prefix is the source;
+	// event.Params[0] is the target (the channel or nickname the message was sent to)
+	// and event.Params[1] is the message itself
 });
 
 err := irc.Connect()

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/goshuirc/irc-go/ircevent"
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 func getenv(key, defaultValue string) (value string) {
@@ -36,15 +37,15 @@ func main() {
 		SASLPassword: saslPassword,
 	}
 
-	irc.AddConnectCallback(func(e ircevent.Event) {
+	irc.AddConnectCallback(func(e ircmsg.Message) {
 		// attempt to set the BOT mode on ourself:
 		if botMode := irc.ISupport()["BOT"]; botMode != "" {
 			irc.Send("MODE", irc.CurrentNick(), "+"+botMode)
 		}
 		irc.Join(channel)
 	})
-	irc.AddCallback("JOIN", func(e ircevent.Event) {}) // TODO try to rejoin if we *don't* get this
-	irc.AddCallback("PRIVMSG", func(e ircevent.Event) {
+	irc.AddCallback("JOIN", func(e ircmsg.Message) {}) // TODO try to rejoin if we *don't* get this
+	irc.AddCallback("PRIVMSG", func(e ircmsg.Message) {
 		if len(e.Params) < 2 {
 			return
 		}
@@ -65,7 +66,7 @@ func main() {
 	// example client-to-client extension via message-tags:
 	// have the bot maintain a running sum of integers
 	var sum int64 // doesn't need synchronization as long as it's only visible from a single callback
-	irc.AddCallback("TAGMSG", func(e ircevent.Event) {
+	irc.AddCallback("TAGMSG", func(e ircmsg.Message) {
 		_, tv := e.GetTag("+summand")
 		if v, err := strconv.ParseInt(tv, 10, 64); err == nil {
 			sum += v

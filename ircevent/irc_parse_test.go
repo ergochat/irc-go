@@ -7,16 +7,16 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	event := new(Event)
-	event.Prefix = "nick!~user@host"
+	source := "nick!~user@host"
+	nick, user, host := SplitNUH(source)
 
-	if event.Nick() != "nick" {
+	if nick != "nick" {
 		t.Fatal("Parse failed: nick")
 	}
-	if event.User() != "~user" {
+	if user != "~user" {
 		t.Fatal("Parse failed: user")
 	}
-	if event.Host() != "host" {
+	if host != "host" {
 		t.Fatal("Parse failed: host")
 	}
 }

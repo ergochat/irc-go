@@ -158,7 +158,7 @@ func TestRegression(t *testing.T) {
 	// this terminates the previous read, within the acceptable limit:
 	c.reads = append(c.reads, makeLine(500, true))
 
-	var cc IRCReader
+	var cc Reader
 	cc.Initialize(&c, 512, 4096+512)
 
 	line, err := cc.ReadLine()

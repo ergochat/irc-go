@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/goshuirc/irc-go/ircmsg"
 )
 
 const (
@@ -48,9 +50,9 @@ func runCAPTest(caps []string, useSASL bool, t *testing.T) {
 	}
 	irccon.RequestCaps = caps
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
 
-	irccon.AddCallback("366", func(e Event) {
+	irccon.AddCallback("366", func(e ircmsg.Message) {
 		irccon.Privmsg("#go-eventirc", "Test Message SASL")
 		irccon.Quit()
 	})
@@ -96,7 +98,7 @@ func TestSASLFail(t *testing.T) {
 	irccon.UseTLS = true
 	setSaslTestCreds(irccon, t)
 	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-	irccon.AddCallback("001", func(e Event) { irccon.Join("#go-eventirc") })
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
 	// intentionally break the password
 	irccon.SASLPassword = irccon.SASLPassword + "_"
 	err := irccon.Connect()
