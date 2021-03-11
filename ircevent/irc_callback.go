@@ -18,21 +18,21 @@ const (
 
 // Tuple type for uniquely identifying callbacks
 type CallbackID struct {
-	eventCode string
-	id        uint64
+	command string
+	id      uint64
 }
 
-// Register a callback to a connection and event code. A callback is a function
-// which takes only an ircmsg.Message object as parameter. Valid event codes are all
-// IRC/CTCP commands and error/response codes. This function returns the ID of the
+// Register a callback to handle an IRC command (or numeric). A callback is a
+// function which takes only an ircmsg.Message object as parameter. Valid commands
+// are all IRC commands, including numerics. This function returns the ID of the
 // registered callback for later management.
-func (irc *Connection) AddCallback(eventCode string, callback func(ircmsg.Message)) CallbackID {
-	return irc.addCallback(eventCode, Callback(callback), false, 0)
+func (irc *Connection) AddCallback(command string, callback func(ircmsg.Message)) CallbackID {
+	return irc.addCallback(command, Callback(callback), false, 0)
 }
 
-func (irc *Connection) addCallback(eventCode string, callback Callback, prepend bool, idNum uint64) CallbackID {
-	eventCode = strings.ToUpper(eventCode)
-	if eventCode == "" || strings.HasPrefix(eventCode, "*") || eventCode == "BATCH" {
+func (irc *Connection) addCallback(command string, callback Callback, prepend bool, idNum uint64) CallbackID {
+	command = strings.ToUpper(command)
+	if command == "" || strings.HasPrefix(command, "*") || command == "BATCH" {
 		return CallbackID{}
 	}
 
@@ -47,9 +47,9 @@ func (irc *Connection) addCallback(eventCode string, callback Callback, prepend 
 		idNum = irc.callbackCounter
 		irc.callbackCounter++
 	}
-	id := CallbackID{eventCode: eventCode, id: idNum}
+	id := CallbackID{command: command, id: idNum}
 	newPair := callbackPair{id: id.id, callback: callback}
-	current := irc.events[eventCode]
+	current := irc.events[command]
 	newList := make([]callbackPair, len(current)+1)
 	start := 0
 	if prepend {
@@ -60,7 +60,7 @@ func (irc *Connection) addCallback(eventCode string, callback Callback, prepend 
 	if !prepend {
 		newList[len(newList)-1] = newPair
 	}
-	irc.events[eventCode] = newList
+	irc.events[command] = newList
 	return id
 }
 
@@ -68,14 +68,14 @@ func (irc *Connection) addCallback(eventCode string, callback Callback, prepend 
 func (irc *Connection) RemoveCallback(id CallbackID) {
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
-	switch id.eventCode {
+	switch id.command {
 	case registrationEvent:
 		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
 		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
 	case "BATCH":
 		irc.removeBatchCallbackNoMutex(id.id)
 	default:
-		irc.removeCallbackNoMutex(id.eventCode, id.id)
+		irc.removeCallbackNoMutex(id.command, id.id)
 	}
 }
 
@@ -94,12 +94,12 @@ func (irc *Connection) removeCallbackNoMutex(code string, id uint64) {
 }
 
 // Remove all callbacks from a given event code.
-func (irc *Connection) ClearCallback(eventcode string) {
-	eventcode = strings.ToUpper(eventcode)
+func (irc *Connection) ClearCallback(command string) {
+	command = strings.ToUpper(command)
 
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
-	delete(irc.events, eventcode)
+	delete(irc.events, command)
 }
 
 // Replace callback i (ID) associated with a given event code with a new callback function.
@@ -107,7 +107,7 @@ func (irc *Connection) ReplaceCallback(id CallbackID, callback func(ircmsg.Messa
 	irc.eventsMutex.Lock()
 	defer irc.eventsMutex.Unlock()
 
-	list := irc.events[id.eventCode]
+	list := irc.events[id.command]
 	for i, p := range list {
 		if p.id == id.id {
 			list[i] = callbackPair{id: id.id, callback: callback}
@@ -133,7 +133,7 @@ func (irc *Connection) AddBatchCallback(callback func(*Batch) bool) CallbackID {
 	copy(nbc, irc.batchCallbacks)
 	nbc[len(nbc)-1] = batchCallbackPair{id: idNum, callback: callback}
 	irc.batchCallbacks = nbc
-	return CallbackID{eventCode: "BATCH", id: idNum}
+	return CallbackID{command: "BATCH", id: idNum}
 }
 
 func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
@@ -157,7 +157,7 @@ func (irc *Connection) AddConnectCallback(callback func(ircmsg.Message)) (id Cal
 	// XXX: forcibly use the same ID number for both copies of the callback
 	id376 := irc.AddCallback(RPL_ENDOFMOTD, callback)
 	irc.addCallback(ERR_NOMOTD, callback, false, id376.id)
-	return CallbackID{eventCode: registrationEvent, id: id376.id}
+	return CallbackID{command: registrationEvent, id: id376.id}
 }
 
 func (irc *Connection) getCallbacks(code string) (result []callbackPair) {
