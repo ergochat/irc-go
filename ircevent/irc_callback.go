@@ -325,7 +325,7 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	}
 
 	// handle batch start or end
-	if irc.batchNegotiated {
+	if irc.batchNegotiated() {
 		if msg.Command == "BATCH" {
 			irc.handleBatchCommand(msg)
 			return
@@ -336,7 +336,7 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	}
 
 	// handle labeled single command, or labeled ACK
-	if irc.labelNegotiated {
+	if irc.labelNegotiated() {
 		if hasLabel, labelStr := msg.GetTag("label"); hasLabel {
 			var labelCallback LabelCallback
 			if label := deserializeLabel(labelStr); label != 0 {

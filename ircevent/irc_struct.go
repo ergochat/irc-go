@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goshuirc/irc-go/ircmsg"
@@ -86,11 +87,10 @@ type Connection struct {
 	// Connect() builds these with sufficient capacity to receive all expected
 	// responses during negotiation. Sends to them are nonblocking, so anything
 	// sent outside of negotiation will not cause the relevant callbacks to block.
-	welcomeChan     chan empty      // signals that we got 001 and we are now connected
-	saslChan        chan saslResult // transmits the final outcome of SASL negotiation
-	capsChan        chan capResult  // transmits the final status of each CAP negotiated
-	batchNegotiated bool
-	labelNegotiated bool
+	welcomeChan chan empty      // signals that we got 001 and we are now connected
+	saslChan    chan saslResult // transmits the final outcome of SASL negotiation
+	capsChan    chan capResult  // transmits the final status of each CAP negotiated
+	capFlags    uint32
 
 	// callback state
 	eventsMutex sync.Mutex
@@ -138,6 +138,56 @@ type pendingLabel struct {
 type Batch struct {
 	ircmsg.Message
 	Items []*Batch
+}
+
+const (
+	capFlagBatch uint32 = 1 << iota
+	capFlagMessageTags
+	capFlagLabeledResponse
+	capFlagMultiline
+)
+
+func (irc *Connection) processAckedCaps(acknowledgedCaps []string) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	var hasBatch, hasLabel, hasTags, hasMultiline bool
+	for _, c := range acknowledgedCaps {
+		irc.capsAcked[c] = irc.capsAdvertised[c]
+		switch c {
+		case "batch":
+			hasBatch = true
+		case "labeled-response":
+			hasLabel = true
+		case "message-tags":
+			hasTags = true
+		case "draft/multiline", "multiline":
+			hasMultiline = true
+		}
+	}
+
+	var capFlags uint32
+	if hasBatch {
+		capFlags |= capFlagBatch
+	}
+	if hasBatch && hasLabel {
+		capFlags |= capFlagLabeledResponse
+	}
+	if hasTags {
+		capFlags |= capFlagMessageTags
+	}
+	if hasTags && hasBatch && hasMultiline {
+		capFlags |= capFlagMultiline
+	}
+
+	atomic.StoreUint32(&irc.capFlags, capFlags)
+}
+
+func (irc *Connection) batchNegotiated() bool {
+	return atomic.LoadUint32(&irc.capFlags)&capFlagBatch != 0
+}
+
+func (irc *Connection) labelNegotiated() bool {
+	return atomic.LoadUint32(&irc.capFlags)&capFlagLabeledResponse != 0
 }
 
 func ExtractNick(source string) string {
