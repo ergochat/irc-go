@@ -134,7 +134,7 @@ func (irc *Connection) readLoop() {
 			return
 		}
 
-		if irc.batchNegotiated && time.Since(lastExpireCheck) > irc.Timeout {
+		if irc.batchNegotiated() && time.Since(lastExpireCheck) > irc.Timeout {
 			irc.expireBatches(false)
 			lastExpireCheck = time.Now()
 		}
@@ -376,7 +376,7 @@ func (irc *Connection) Send(command string, params ...string) error {
 // If the server fails to respond correctly, the callback will be invoked with `nil`
 // as the argument.
 func (irc *Connection) SendWithLabel(callback func(*Batch), tags map[string]string, command string, params ...string) error {
-	if !irc.labelNegotiated {
+	if !irc.labelNegotiated() {
 		return CapabilityNotNegotiated
 	}
 
@@ -691,14 +691,7 @@ func (irc *Connection) negotiateCaps() error {
 
 	var acknowledgedCaps []string
 	defer func() {
-		irc.stateMutex.Lock()
-		defer irc.stateMutex.Unlock()
-		for _, c := range acknowledgedCaps {
-			irc.capsAcked[c] = irc.capsAdvertised[c]
-		}
-		_, irc.batchNegotiated = irc.capsAcked["batch"]
-		_, labelNegotiated := irc.capsAcked["labeled-response"]
-		irc.labelNegotiated = irc.batchNegotiated && labelNegotiated
+		irc.processAckedCaps(acknowledgedCaps)
 	}()
 
 	irc.Send("CAP", "LS", "302")
