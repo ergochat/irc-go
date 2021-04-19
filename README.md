@@ -20,3 +20,5 @@ Packages:
 * [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Alternative, work-in-progress client library.
 * [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
 * [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
+
+For a relatively complete example of the library's use, see [slingamn/titlebot](https://github.com/slingamn/titlebot).
