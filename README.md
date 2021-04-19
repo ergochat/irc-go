@@ -17,8 +17,8 @@ Packages:
 * [**ircreader**](https://godoc.org/github.com/goshuirc/irc-go/ircreader): Optimized reader for \n-terminated lines, with an expanding but bounded buffer.
 * [**ircevent**](https://godoc.org/github.com/goshuirc/irc-go/ircevent): IRC client library (fork of [thoj/go-ircevent](https://github.com/thoj/go-ircevent)).
 * [**ircfmt**](https://godoc.org/github.com/goshuirc/irc-go/ircfmt): IRC format codes handling, escaping and unescaping.
-* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Alternative, work-in-progress client library.
-* [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
 * [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
+* [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
+* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Alternative, work-in-progress client library.
 
 For a relatively complete example of the library's use, see [slingamn/titlebot](https://github.com/slingamn/titlebot).
