@@ -1,6 +1,6 @@
 # GoshuIRC-Go
 
-This is a bunch of self-contained packages that help with IRC development in Go. The package splits themselves are fairly similar to how things are split up in the [original Python version](https://github.com/goshuirc/irc).
+These are libraries to help in writing IRC clients and servers in Go, prioritizing correctness, safety, and [IRCv3 support](https://ircv3.net/). They are not yet API-stable, but any API breaks should be modest in scope.
 
 ---
 
@@ -11,22 +11,12 @@ This is a bunch of self-contained packages that help with IRC development in Go.
 
 ---
 
-I'm aiming for this to become a client library all of its own. The best path to that is writing a bunch of useful, testable, self-contained packages that I'm able to wire together!
-
-These packages are still in their early stages. Specifically, they're probably not as well-optimised as we'd like, and the interfaces exposed by them may not be final. For specific package details, view the documentation of that package.
-
-An example bot that uses these packages can be found [here](https://gist.github.com/DanielOaks/cbbc957e8dba39f59d9e).
-
 Packages:
 
 * [**ircmsg**](https://godoc.org/github.com/goshuirc/irc-go/ircmsg): IRC message handling, raw line parsing and creation.
-* [**ircfmt**](https://godoc.org/github.com/goshuirc/irc-go/ircfmt): IRC format codes handling, escaping and unescaping.
 * [**ircreader**](https://godoc.org/github.com/goshuirc/irc-go/ircreader): Optimized reader for \n-terminated lines, with an expanding but bounded buffer.
-* [**ircevent**](https://godoc.org/github.com/goshuirc/irc-go/ircevent): Work-in-progress client library (fork of [thoj/go-ircevent](https://github.com/thoj/go-ircevent)).
-* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Another work-in-progress client library.
+* [**ircevent**](https://godoc.org/github.com/goshuirc/irc-go/ircevent): IRC client library (fork of [thoj/go-ircevent](https://github.com/thoj/go-ircevent)).
+* [**ircfmt**](https://godoc.org/github.com/goshuirc/irc-go/ircfmt): IRC format codes handling, escaping and unescaping.
+* [**gircclient**](https://godoc.org/github.com/goshuirc/irc-go/client): Alternative, work-in-progress client library.
 * [**ircmap**](https://godoc.org/github.com/goshuirc/irc-go/ircmap): IRC string casefolding.
 * [**ircutils**](https://godoc.org/github.com/goshuirc/irc-go/ircutils): Useful utility functions and classes that don't fit into their own packages.
-
----
-
-Also check out the eventmgr library [here](https://godoc.org/github.com/goshuirc/eventmgr), which helps with event attaching and dispatching.
