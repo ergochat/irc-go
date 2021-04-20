@@ -3,54 +3,58 @@
 
 package ircutils
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
-// UserHost holds a username+host combination
-type UserHost struct {
+var (
+	// ErrorNUHIsEmpty indicates that the given NUH was empty.
+	ErrorNUHIsEmpty = errors.New("NUH is empty")
+
+	// ErrorNUHContainsBadChar indicates that the NUH contained invalid characters
+	ErrorNUHContainsBadChar = errors.New("NUH contains invalid characters")
+)
+
+// NUH holds a nick+username+host combination
+type NUH struct {
 	Nick string
 	User string
 	Host string
 }
 
-// ParseUserhost takes a userhost string and returns a UserHost instance.
-func ParseUserhost(userhost string) UserHost {
-	var uh UserHost
-
-	if len(userhost) == 0 {
-		return uh
+func ParseNUH(in string) (out NUH, err error) {
+	if len(in) == 0 {
+		return out, ErrorNUHIsEmpty
+	}
+	if strings.IndexByte(in, ' ') > -1 {
+		return out, ErrorNUHContainsBadChar
 	}
 
-	if strings.Contains(userhost, "!") {
-		usersplit := strings.SplitN(userhost, "!", 2)
-		var rest string
-		if len(usersplit) == 2 {
-			uh.Nick = usersplit[0]
-			rest = usersplit[1]
-		} else {
-			rest = usersplit[0]
-		}
-
-		hostsplit := strings.SplitN(rest, "@", 2)
-		if len(hostsplit) == 2 {
-			uh.User = hostsplit[0]
-			uh.Host = hostsplit[1]
-		} else {
-			uh.User = hostsplit[0]
-		}
-	} else {
-		hostsplit := strings.SplitN(userhost, "@", 2)
-		if len(hostsplit) == 2 {
-			uh.Nick = hostsplit[0]
-			uh.Host = hostsplit[1]
-		} else {
-			uh.User = hostsplit[0]
-		}
+	hostStart := strings.IndexByte(in, '@')
+	if hostStart != -1 {
+		out.Host = in[hostStart+1:]
+		in = in[:hostStart]
 	}
+	userStart := strings.IndexByte(in, '!')
+	if userStart != -1 {
+		out.User = in[userStart+1:]
+		in = in[:userStart]
+	}
+	out.Nick = in
 
-	return uh
+	return
 }
 
-// // Canonical returns the canonical string representation of the userhost.
-// func (uh *UserHost) Canonical() string {
-// 	return ""
-// }
+// Canonical returns the canonical string representation of the nuh.
+func (nuh *NUH) Canonical() (out string) {
+	out = nuh.Nick
+	if nuh.User != "" {
+		out = fmt.Sprintf("%s!%s", out, nuh.User)
+	}
+	if nuh.Host != "" {
+		out = fmt.Sprintf("%s@%s", out, nuh.Host)
+	}
+	return
+}
