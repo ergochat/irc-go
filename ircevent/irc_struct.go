@@ -41,28 +41,29 @@ type capResult struct {
 
 type Connection struct {
 	// config data, user-settable
-	Server        string
-	TLSConfig     *tls.Config
-	Nick          string
-	User          string
-	RealName      string   // IRC realname/gecos
-	WebIRC        []string // parameters for the WEBIRC command
-	Password      string   // server password (PASS command)
-	RequestCaps   []string // IRCv3 capabilities to request (failure is non-fatal)
-	SASLLogin     string   // SASL credentials to log in with (failure is fatal)
-	SASLPassword  string
-	SASLMech      string
-	QuitMessage   string
-	Version       string
-	Timeout       time.Duration
-	KeepAlive     time.Duration
-	ReconnectFreq time.Duration
-	MaxLineLen    int // maximum line length, not including tags
-	UseTLS        bool
-	UseSASL       bool
-	EnableCTCP    bool
-	Debug         bool
-	AllowPanic    bool // if set, don't recover() from panics in callbacks
+	Server          string
+	TLSConfig       *tls.Config
+	Nick            string
+	User            string
+	RealName        string   // IRC realname/gecos
+	WebIRC          []string // parameters for the WEBIRC command
+	Password        string   // server password (PASS command)
+	RequestCaps     []string // IRCv3 capabilities to request (failure is non-fatal)
+	SASLLogin       string   // SASL credentials to log in with (failure is fatal)
+	SASLPassword    string
+	SASLMech        string
+	QuitMessage     string
+	Version         string
+	Timeout         time.Duration
+	KeepAlive       time.Duration
+	ReconnectFreq   time.Duration
+	MaxLineLen      int // maximum line length, not including tags
+	UseTLS          bool
+	UseSASL         bool
+	EnableCTCP      bool
+	Debug           bool
+	AllowPanic      bool // if set, don't recover() from panics in callbacks
+	AllowTruncation bool // if set, truncate lines exceeding MaxLineLen and send them
 
 	// networking and synchronization
 	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
