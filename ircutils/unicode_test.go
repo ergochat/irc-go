@@ -31,3 +31,16 @@ func TestTruncateUTF8(t *testing.T) {
 	// shouldn't truncate the whole string
 	assertEqual(TruncateUTF8Safe("\xff\xff\xff\xff\xff\xff", 5), "\xff\xff")
 }
+
+func TestSanitize(t *testing.T) {
+	assertEqual(SanitizeText("abc", 10), "abc")
+	assertEqual(SanitizeText("abcdef", 5), "abcde")
+
+	assertEqual(SanitizeText("shivaram\x00shivaram\x00shivarampassphrase", 400), "shivaramshivaramshivarampassphrase")
+
+	assertEqual(SanitizeText("the quick brown fox\xffjumps over the lazy dog", 400), "the quick brown fox\xef\xbf\xbdjumps over the lazy dog")
+
+	// \r ignored, \n is two spaces
+	assertEqual(SanitizeText("the quick brown fox\r\njumps over the lazy dog", 400), "the quick brown fox  jumps over the lazy dog")
+	assertEqual(SanitizeText("the quick brown fox\njumps over the lazy dog", 400), "the quick brown fox  jumps over the lazy dog")
+}
