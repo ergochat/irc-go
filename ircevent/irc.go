@@ -351,7 +351,7 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 // Send a built ircmsg.Message.
 func (irc *Connection) SendIRCMessage(msg ircmsg.Message) error {
 	b, err := msg.LineBytesStrict(true, irc.MaxLineLen)
-	if err != nil {
+	if err != nil && !(irc.AllowTruncation && err == ircmsg.ErrorBodyTooLong) {
 		if irc.Debug {
 			irc.Log.Printf("couldn't assemble message: %v\n", err)
 		}
