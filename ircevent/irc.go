@@ -673,11 +673,13 @@ func (irc *Connection) Connect() (err error) {
 	}
 	irc.Send("NICK", irc.PreferredNick())
 	irc.Send("USER", irc.User, "s", "e", realname)
+	timeout := time.NewTimer(irc.Timeout)
+	defer timeout.Stop()
 	select {
 	case <-irc.welcomeChan:
 	case <-irc.end:
 		err = ServerDisconnected
-	case <-time.After(irc.Timeout):
+	case <-timeout.C:
 		err = ServerTimedOut
 	}
 	return
@@ -724,13 +726,16 @@ func (irc *Connection) negotiateCaps() error {
 		} else {
 			irc.Send("AUTHENTICATE", irc.SASLMech)
 		}
+		timeout := time.NewTimer(CAPTimeout)
+		defer timeout.Stop()
 		select {
 		case res := <-irc.saslChan:
 			if res.Failed {
 				return res.Err
 			}
-		case <-time.After(CAPTimeout):
-			// Raise an error if we can't authenticate with SASL.
+		case <-timeout.C:
+			// if we expect to be able to SASL, failure to SASL should be treated
+			// as a connection error:
 			return SASLFailed
 		case <-irc.end:
 			return ServerDisconnected
