@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/goshuirc/irc-go/ircevent"
-	"github.com/goshuirc/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircevent"
+	"github.com/ergochat/irc-go/ircmsg"
 )
 
 func getenv(key, defaultValue string) (value string) {

@@ -30,12 +30,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goshuirc/irc-go/ircmsg"
-	"github.com/goshuirc/irc-go/ircreader"
+	"github.com/ergochat/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircreader"
 )
 
 const (
-	Version = "goshuirc/irc-go"
+	Version = "ergochat/irc-go"
 
 	// prefix for keepalive ping parameters
 	keepalivePrefix = "KeepAlive-"

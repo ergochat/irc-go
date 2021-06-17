@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/goshuirc/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircmsg"
 )
 
 const (
