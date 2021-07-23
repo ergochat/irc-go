@@ -336,9 +336,14 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	// `end` is closed), but invocations from outside do (even though the race window
 	// is very small).
 	irc.stateMutex.Lock()
+	running := irc.running
 	end := irc.end
 	pwrite := irc.pwrite
 	irc.stateMutex.Unlock()
+
+	if !running {
+		return ClientDisconnected
+	}
 
 	select {
 	case pwrite <- b:
