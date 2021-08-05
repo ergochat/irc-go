@@ -569,8 +569,8 @@ func (irc *Connection) Connect() (err error) {
 		if irc.Timeout == 0 {
 			irc.Timeout = 1 * time.Minute
 		}
-		if irc.KeepAlive < 2*irc.Timeout {
-			return errors.New("KeepAlive must be at least twice Timeout")
+		if irc.KeepAlive < irc.Timeout {
+			return errors.New("KeepAlive must be at least Timeout")
 		}
 		if irc.ReconnectFreq == 0 {
 			irc.ReconnectFreq = 2 * time.Minute
