@@ -77,6 +77,14 @@ var decodetests = []testcode{
 		MakeMessage(nil, "", "LIST")},
 	{"@time=2848  :dan-!d@localhost  LIST \r\n",
 		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "LIST")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b ::\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", ":")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b ::hi\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", ":hi")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :hi\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "hi")},
 }
 
 type testparseerror struct {
