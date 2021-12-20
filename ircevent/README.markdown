@@ -9,6 +9,7 @@ Features
 * Handles reconnections
 * Supports SASL
 * Supports requesting [IRCv3 capabilities](https://ircv3.net/specs/core/capability-negotiation)
+* Advanced IRCv3 support, including [batch](https://ircv3.net/specs/extensions/batch) and [labeled-response](https://ircv3.net/specs/extensions/labeled-response)
 
 Example
 -------
@@ -16,14 +17,14 @@ See [examples/simple.go](examples/simple.go) for a working example, but this ill
 
 ```go
 irc := ircevent.Connection{
-	Server:      "testnet.oragono.io:6697",
+	Server:      "testnet.ergo.chat:6697",
 	UseTLS:      true,
 	Nick:        "ircevent-test",
 	Debug:       true,
 	RequestCaps: []string{"server-time", "message-tags"},
 }
 
-irc.AddCallback("001", func(e ircmsg.Message) { irc.Join("#ircevent-test") })
+irc.AddConnectCallback(func(e ircmsg.Message) { irc.Join("#ircevent-test") })
 
 irc.AddCallback("PRIVMSG", func(event ircmsg.Message) {
 	// event.Prefix is the source;
