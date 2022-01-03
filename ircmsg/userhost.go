@@ -5,7 +5,6 @@ package ircmsg
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -42,5 +41,11 @@ func (n *NUH) String() string {
 	if n.Nick == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s!%s@%s", n.Nick, n.User, n.Host)
+	result := make([]byte, 0, (len(n.Nick) + 1 + len(n.User) + 1 + len(n.Host)))
+	result = append(result, n.Nick...)
+	result = append(result, '!')
+	result = append(result, n.User...)
+	result = append(result, '@')
+	result = append(result, n.Host...)
+	return string(result)
 }
