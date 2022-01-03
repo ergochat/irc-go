@@ -21,6 +21,16 @@ func TestParseNUH(t *testing.T) {
 	assertEqual(err, nil)
 	assertEqual(nuh.String(), "nick!~user@host")
 
+	nuh, err = ParseNUH("nick!@host")
+	assertEqual(nuh, NUH{"nick", "", "host"})
+	assertEqual(err, nil)
+	assertEqual(nuh.String(), "nick!@host")
+
+	nuh, err = ParseNUH("nick!@")
+	assertEqual(nuh, NUH{"nick", "", ""})
+	assertEqual(err, nil)
+	assertEqual(nuh.String(), "nick!@")
+
 	// bare nick (ambiguous with server name)
 	nuh, err = ParseNUH("nick")
 	assertEqual(nuh, NUH{})
