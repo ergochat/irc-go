@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-// NUH holds a parsed nick!user@host source of an IRC message
+// NUH represents the prefix (i.e. source) of an IRC message that originates
+// from an end user (as opposed to a server numeric or notice). Such a prefix
+// has three components: nickname, username, and hostname, arranged so:
+// nick!user@host
 type NUH struct {
 	Nick string
 	User string
@@ -20,7 +23,9 @@ var (
 	IllFormedNUH = errors.New("did not receive a well-formed nick!user@host")
 )
 
-// ParseUserhost takes a userhost string and returns a UserHost instance.
+// ParseUserhost takes a message prefix (i.e. source) and parses it into a NUH
+// ("nick-user-host"). It returns an error for prefixes that are not well-formed
+// NUHs (for example, server names).
 func ParseNUH(rawNUH string) (result NUH, err error) {
 	if i, j := strings.Index(rawNUH, "!"), strings.Index(rawNUH, "@"); i > -1 && j > -1 && i < j {
 		result.Nick = rawNUH[0:i]
@@ -32,7 +37,7 @@ func ParseNUH(rawNUH string) (result NUH, err error) {
 	return
 }
 
-// String returns the canonical string representation of the userhost.
+// String returns the canonical string representation of the NUH.
 func (n *NUH) String() string {
 	if n.Nick == "" {
 		return ""
