@@ -154,6 +154,22 @@ func (msg *Message) ClientOnlyTags() map[string]string {
 	return msg.clientOnlyTags
 }
 
+// Nick returns the nickname if the source of the message is a well-formed
+// nickname, otherwise the empty string.
+func (msg *Message) Nick() (nick string) {
+	nuh, err := ParseNUH(msg.Prefix)
+	if err == nil {
+		return nuh.Nick
+	}
+	return
+}
+
+// NUH returns the source of the message as a parsed NUH ("nick-user-host");
+// if the source is not well-formed as a NUH, it returns an error.
+func (msg *Message) NUH() (nuh NUH, err error) {
+	return ParseNUH(msg.Prefix)
+}
+
 // ParseLine creates and returns a message from the given IRC line.
 func ParseLine(line string) (ircmsg Message, err error) {
 	return parseLine(line, 0, 0)
