@@ -155,7 +155,7 @@ func (msg *Message) ClientOnlyTags() map[string]string {
 }
 
 // Nick returns the nickname if the source of the message is a well-formed
-// nickname, otherwise the empty string.
+// NUH ("nick-user-host"), otherwise the empty string.
 func (msg *Message) Nick() (nick string) {
 	nuh, err := ParseNUH(msg.Prefix)
 	if err == nil {
