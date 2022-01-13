@@ -190,7 +190,7 @@ func (irc *Connection) labelNegotiated() bool {
 	return atomic.LoadUint32(&irc.capFlags)&capFlagLabeledResponse != 0
 }
 
-// Deprecated; use (*ircmsg.Message).Name() instead
+// Deprecated; use (*ircmsg.Message).Nick() instead
 func ExtractNick(source string) string {
 	nuh, err := ircmsg.ParseNUH(source)
 	if err == nil {
