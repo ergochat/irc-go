@@ -405,7 +405,7 @@ func (irc *Connection) setupCallbacks() {
 
 	// respond to NICK from the server (in response to our own NICK, or sent unprompted)
 	irc.AddCallback("NICK", func(e ircmsg.Message) {
-		if e.Name() == irc.CurrentNick() && len(e.Params) > 0 {
+		if e.Nick() == irc.CurrentNick() && len(e.Params) > 0 {
 			irc.setCurrentNick(e.Params[0])
 		}
 	})

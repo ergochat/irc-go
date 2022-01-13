@@ -154,9 +154,9 @@ func (msg *Message) ClientOnlyTags() map[string]string {
 	return msg.clientOnlyTags
 }
 
-// Name returns the name component of the message source (either a nickname
-// or a server name).
-func (msg *Message) Name() (nick string) {
+// Nick returns the name component of the message source (typically a nickname,
+// but possibly a server name).
+func (msg *Message) Nick() (nick string) {
 	nuh, err := ParseNUH(msg.Prefix)
 	if err == nil {
 		return nuh.Name
