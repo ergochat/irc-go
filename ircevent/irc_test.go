@@ -138,7 +138,7 @@ func TestConnection(t *testing.T) {
 
 	irccon2.AddCallback("PRIVMSG", func(e ircmsg.Message) {
 		if e.Params[1] == teststr {
-			if ExtractNick(e.Prefix) == ircnick1 {
+			if e.Nick() == ircnick1 {
 				testmsgok <- true
 				irccon2.Quit()
 			} else {
@@ -151,7 +151,7 @@ func TestConnection(t *testing.T) {
 	})
 
 	irccon2.AddCallback("NICK", func(e ircmsg.Message) {
-		if !(ExtractNick(e.Prefix) == ircnick2orig && e.Params[0] == ircnick2) {
+		if !(e.Nick() == ircnick2orig && e.Params[0] == ircnick2) {
 			t.Errorf("Nick change did not work!")
 		}
 	})

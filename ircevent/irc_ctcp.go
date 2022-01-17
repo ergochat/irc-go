@@ -47,22 +47,22 @@ func eventRewriteCTCP(event *ircmsg.Message) {
 
 func (irc *Connection) setupCTCPCallbacks() {
 	irc.AddCallback("CTCP_VERSION", func(e ircmsg.Message) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01VERSION %s\x01", ExtractNick(e.Prefix), irc.Version))
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01VERSION %s\x01", e.Nick(), irc.Version))
 	})
 
 	irc.AddCallback("CTCP_USERINFO", func(e ircmsg.Message) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01USERINFO %s\x01", ExtractNick(e.Prefix), irc.User))
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01USERINFO %s\x01", e.Nick(), irc.User))
 	})
 
 	irc.AddCallback("CTCP_CLIENTINFO", func(e ircmsg.Message) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01CLIENTINFO PING VERSION TIME USERINFO CLIENTINFO\x01", ExtractNick(e.Prefix)))
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01CLIENTINFO PING VERSION TIME USERINFO CLIENTINFO\x01", e.Nick()))
 	})
 
 	irc.AddCallback("CTCP_TIME", func(e ircmsg.Message) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01TIME %s\x01", ExtractNick(e.Prefix), time.Now().UTC().Format(time.RFC1123)))
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01TIME %s\x01", e.Nick(), time.Now().UTC().Format(time.RFC1123)))
 	})
 
 	irc.AddCallback("CTCP_PING", func(e ircmsg.Message) {
-		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01%s\x01", ExtractNick(e.Prefix), e.Params[1]))
+		irc.SendRaw(fmt.Sprintf("NOTICE %s :\x01%s\x01", e.Nick(), e.Params[1]))
 	})
 }

@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -191,16 +190,20 @@ func (irc *Connection) labelNegotiated() bool {
 	return atomic.LoadUint32(&irc.capFlags)&capFlagLabeledResponse != 0
 }
 
+// Deprecated; use (*ircmsg.Message).Nick() instead
 func ExtractNick(source string) string {
-	nick, _, _ := SplitNUH(source)
-	return nick
+	nuh, err := ircmsg.ParseNUH(source)
+	if err == nil {
+		return nuh.Name
+	}
+	return ""
 }
 
+// Deprecated; use (*ircmsg.Message).NUH() instead
 func SplitNUH(source string) (nick, user, host string) {
-	if i, j := strings.Index(source, "!"), strings.Index(source, "@"); i > -1 && j > -1 && i < j {
-		nick = source[0:i]
-		user = source[i+1 : j]
-		host = source[j+1:]
+	nuh, err := ircmsg.ParseNUH(source)
+	if err == nil {
+		return nuh.Name, nuh.User, nuh.Host
 	}
 	return
 }
