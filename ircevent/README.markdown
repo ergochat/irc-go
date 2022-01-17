@@ -27,7 +27,7 @@ irc := ircevent.Connection{
 irc.AddConnectCallback(func(e ircmsg.Message) { irc.Join("#ircevent-test") })
 
 irc.AddCallback("PRIVMSG", func(event ircmsg.Message) {
-	// event.Prefix is the source;
+	// event.Source is the source;
 	// event.Params[0] is the target (the channel or nickname the message was sent to)
 	// and event.Params[1] is the message itself
 });
