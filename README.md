@@ -1,6 +1,6 @@
 # ergochat/irc-go
 
-These are libraries to help in writing IRC clients and servers in Go, prioritizing correctness, safety, and [IRCv3 support](https://ircv3.net/). They are not yet API-stable, but any API breaks should be modest in scope.
+These are libraries to help in writing IRC clients and servers in Go, prioritizing correctness, safety, and [IRCv3 support](https://ircv3.net/). They are not fully API-stable, but we expect any API breaks to be modest in scope.
 
 ---
 
