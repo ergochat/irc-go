@@ -268,7 +268,7 @@ var testMessages = []Message{
 	{
 		tags:           map[string]string{"time": "2019-02-27T04:38:57.489Z", "account": "dan-"},
 		clientOnlyTags: map[string]string{"+status": "typing"},
-		Prefix:         "dan-!~user@example.com",
+		Source:         "dan-!~user@example.com",
 		Command:        "TAGMSG",
 	},
 	{
@@ -282,39 +282,39 @@ var testMessages = []Message{
 	},
 	{
 		tags:    map[string]string{"time": "2019-02-27T04:38:57.489Z", "account": "dan-"},
-		Prefix:  "dan-!~user@example.com",
+		Source:  "dan-!~user@example.com",
 		Command: "PRIVMSG",
 		Params:  []string{"#ircv3", ":smiley:"},
 	},
 	{
 		tags:    map[string]string{"time": "2019-02-27T04:38:57.489Z", "account": "dan-"},
-		Prefix:  "dan-!~user@example.com",
+		Source:  "dan-!~user@example.com",
 		Command: "PRIVMSG",
 		Params:  []string{"#ircv3", "\x01ACTION writes some specs!\x01"},
 	},
 	{
-		Prefix:  "dan-!~user@example.com",
+		Source:  "dan-!~user@example.com",
 		Command: "PRIVMSG",
 		Params:  []string{"#ircv3", ": long trailing command with langue française in it"},
 	},
 	{
-		Prefix:  "dan-!~user@example.com",
+		Source:  "dan-!~user@example.com",
 		Command: "PRIVMSG",
 		Params:  []string{"#ircv3", " : long trailing command with langue française in it "},
 	},
 	{
-		Prefix:  "shivaram",
+		Source:  "shivaram",
 		Command: "KLINE",
 		Params:  []string{"ANDKILL", "24h", "tkadich", "your", "client", "is", "disconnecting", "too", "much"},
 	},
 	{
 		tags:    map[string]string{"time": "2019-02-27T06:01:23.545Z", "draft/msgid": "xjmgr6e4ih7izqu6ehmrtrzscy"},
-		Prefix:  "שיברם",
+		Source:  "שיברם",
 		Command: "PRIVMSG",
 		Params:  []string{"ויקם מלך חדש על מצרים אשר לא ידע את יוסף"},
 	},
 	{
-		Prefix:  "shivaram!~user@2001:0db8::1",
+		Source:  "shivaram!~user@2001:0db8::1",
 		Command: "KICK",
 		Params:  []string{"#darwin", "devilbat", ":::::::::::::: :::::::::::::"},
 	},
@@ -338,7 +338,7 @@ func TestEncodeDecode(t *testing.T) {
 
 func TestForceTrailing(t *testing.T) {
 	message := Message{
-		Prefix:  "shivaram",
+		Source:  "shivaram",
 		Command: "PRIVMSG",
 		Params:  []string{"#darwin", "nice"},
 	}
@@ -362,7 +362,7 @@ func TestForceTrailing(t *testing.T) {
 func TestErrorLineTooLongGeneration(t *testing.T) {
 	message := Message{
 		tags:    map[string]string{"draft/msgid": "SAXV5OYJUr18CNJzdWa1qQ"},
-		Prefix:  "shivaram",
+		Source:  "shivaram",
 		Command: "PRIVMSG",
 		Params:  []string{"aaaaaaaaaaaaaaaaaaaaa"},
 	}
