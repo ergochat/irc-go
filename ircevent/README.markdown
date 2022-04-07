@@ -39,17 +39,20 @@ if err != nil {
 irc.Loop()
 ```
 
-The read loop will wait for all callbacks to complete before moving on
-to the next message. If your callback needs to trigger a long-running task,
-you should spin off a new goroutine for it.
+The read loop executes all callbacks in serial on a single goroutine, respecting
+the order in which messages are received from the server. All callbacks must
+complete before the next message can be processed; if your callback needs to
+trigger a long-running task, you should spin off a new goroutine for it.
 
 Commands
 --------
-These commands can be used from inside callbacks, or externally:
+These methods can be used from inside callbacks, or externally:
 
-	irc.Connect("irc.someserver.com:6667") //Connect to server
 	irc.Send(command, params...)
 	irc.SendWithTags(tags, command, params...)
 	irc.Join(channel)
 	irc.Privmsg(target, message)
 	irc.Privmsgf(target, formatString, params...)
+
+The `ircevent.Connection` object is synchronized internally, so these methods
+can be run from any goroutine without external locking.
