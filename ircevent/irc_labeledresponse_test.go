@@ -277,3 +277,32 @@ func synchronize(irc *Connection) {
 	}, nil, "PING", "!")
 	<-event
 }
+
+func TestSynchronousLabeledResponse(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.RequestCaps = []string{"message-tags", "batch", "labeled-response"}
+	irccon.RealName = "Al_b6AHLrxh8TZb5kNO1gw"
+	err := irccon.Connect()
+	if err != nil {
+		t.Fatalf("labeled response connection failed: %s", err)
+	}
+	go irccon.Loop()
+
+	batch, err := irccon.GetLabeledResponse(nil, "WHOIS", irccon.CurrentNick())
+	if err != nil {
+		t.Fatalf("labeled response failed: %v", err)
+	}
+	assertEqual(batch.Command, "BATCH")
+	results := make(map[string]string)
+	for _, line := range batch.Items {
+		results[line.Command] = line.Params[len(line.Params)-1]
+	}
+
+	// RPL_WHOISUSER, last param is the realname
+	assertEqual(results["311"], "Al_b6AHLrxh8TZb5kNO1gw")
+	if _, ok := results["379"]; !ok {
+		t.Errorf("Expected 379 RPL_WHOISMODES in response, but not received")
+	}
+	assertEqual(len(irccon.batches), 0)
+}
