@@ -56,6 +56,7 @@ var (
 	SASLFailed         = errors.New("SASL setup timed out. Does the server support SASL?")
 
 	CapabilityNotNegotiated = errors.New("The IRCv3 capability required for this was not negotiated")
+	NoLabeledResponse       = errors.New("The server failed to send a labeled response to the command")
 
 	serverDidNotQuit = errors.New("server did not respond to QUIT")
 	clientHasQuit    = errors.New("client has called Quit()")
@@ -394,6 +395,26 @@ func (irc *Connection) SendWithLabel(callback func(*Batch), tags map[string]stri
 		irc.unregisterLabel(label)
 	}
 	return err
+}
+
+// GetLabeledResponse sends an IRC message using the IRCv3 labeled-response
+// specification, then synchronously waits for the response, which is returned
+// as a *Batch. If the server fails to respond correctly, an error will be
+// returned.
+func (irc *Connection) GetLabeledResponse(tags map[string]string, command string, params ...string) (batch *Batch, err error) {
+	done := make(chan empty)
+	err = irc.SendWithLabel(func(b *Batch) {
+		batch = b
+		close(done)
+	}, tags, command, params...)
+	if err != nil {
+		return
+	}
+	<-done
+	if batch == nil {
+		err = NoLabeledResponse
+	}
+	return
 }
 
 // Send a raw string.
