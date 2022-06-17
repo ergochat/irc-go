@@ -161,6 +161,11 @@ func (irc *Connection) AddConnectCallback(callback func(ircmsg.Message)) (id Cal
 	return CallbackID{command: registrationEvent, id: id376.id}
 }
 
+// Adds a callback to be run when disconnection from the server is detected;
+// this may be a connectivity failure, a server-initiated disconnection, or
+// a client-initiated Quit(). These callbacks are run after the last message
+// from the server is processed, before any reconnection attempt. The contents
+// of the Message object supplied to the callback are undefined.
 func (irc *Connection) AddDisconnectCallback(callback func(ircmsg.Message)) (id CallbackID) {
 	return irc.AddCallback(disconnectEvent, callback)
 }
