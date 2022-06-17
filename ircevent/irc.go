@@ -109,6 +109,12 @@ func (irc *Connection) recordPong(param string) {
 func (irc *Connection) readLoop() {
 	defer irc.wg.Done()
 
+	defer func() {
+		if irc.registered {
+			irc.runDisconnectCallbacks()
+		}
+	}()
+
 	msgChan := make(chan string)
 	errChan := make(chan error)
 	go readMsgLoop(irc.socket, irc.MaxLineLen, msgChan, errChan, irc.end)
@@ -308,11 +314,6 @@ func (irc *Connection) Loop() {
 func (irc *Connection) waitForStop() {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
-
-	// run disconnect callbacks here: they will happen-after all readLoop-triggered
-	// event callback, since we waited for readLoop to exit. Connected() is false
-	// while these are executing.
-	irc.runDisconnectCallbacks()
 
 	if irc.socket != nil {
 		irc.socket.Close()
@@ -765,9 +766,17 @@ func (irc *Connection) negotiateCaps() error {
 		}
 	}
 
+	saslError := func(err error) error {
+		if !irc.SASLOptional {
+			return err
+		} else {
+			return nil
+		}
+	}
+
 	if irc.UseSASL {
 		if !sliceContains("sasl", acknowledgedCaps) {
-			return SASLFailed
+			return saslError(SASLFailed)
 		} else {
 			irc.Send("AUTHENTICATE", irc.SASLMech)
 		}
@@ -776,12 +785,12 @@ func (irc *Connection) negotiateCaps() error {
 		select {
 		case res := <-irc.saslChan:
 			if res.Failed {
-				return res.Err
+				return saslError(res.Err)
 			}
 		case <-timeout.C:
 			// if we expect to be able to SASL, failure to SASL should be treated
 			// as a connection error:
-			return SASLFailed
+			return saslError(SASLFailed)
 		case <-irc.end:
 			return ServerDisconnected
 		}

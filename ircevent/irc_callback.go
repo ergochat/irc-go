@@ -427,11 +427,12 @@ func (irc *Connection) setupCallbacks() {
 	irc.AddCallback(RPL_ISUPPORT, irc.handleISupport)
 
 	// respond to NICK from the server (in response to our own NICK, or sent unprompted)
-	irc.AddCallback("NICK", func(e ircmsg.Message) {
+	// #84: prepend so this runs before the client's own NICK callbacks
+	irc.addCallback("NICK", func(e ircmsg.Message) {
 		if e.Nick() == irc.CurrentNick() && len(e.Params) > 0 {
 			irc.setCurrentNick(e.Params[0])
 		}
-	})
+	}, true, 0)
 
 	irc.AddCallback("ERROR", func(e ircmsg.Message) {
 		if !irc.isQuitting() {
