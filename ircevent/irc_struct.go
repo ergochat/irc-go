@@ -68,6 +68,7 @@ type Connection struct {
 	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
 	end        chan empty     // closing this causes the goroutines to exit
 	pwrite     chan []byte    // receives IRC lines to be sent to the socket
+	reconnSig  chan empty     // interrupts sleep in between reconnects (#79)
 	wg         sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
 	socket     net.Conn
 	lastError  error

@@ -285,7 +285,12 @@ func (irc *Connection) Loop() {
 			if irc.Debug {
 				irc.Log.Printf("Waiting %v to reconnect", delay)
 			}
-			time.Sleep(delay)
+			t := time.NewTimer(delay)
+			select {
+			case <-t.C:
+			case <-irc.reconnSig:
+				t.Stop()
+			}
 		}
 
 		lastReconnect = time.Now()
@@ -539,6 +544,10 @@ func (irc *Connection) Connected() bool {
 // TODO try to ensure buffered messages are sent?
 func (irc *Connection) Reconnect() {
 	irc.closeEnd()
+	select {
+	case irc.reconnSig <- empty{}:
+	default:
+	}
 }
 
 func (irc *Connection) closeEnd() {
@@ -621,6 +630,11 @@ func (irc *Connection) Connect() (err error) {
 		}
 		if irc.Version == "" {
 			irc.Version = Version
+		}
+		// this only runs on first Connect() invocation;
+		// unlike other synch primitives it is shared across reconnections:
+		if irc.reconnSig == nil {
+			irc.reconnSig = make(chan empty)
 		}
 		return nil
 	}()
