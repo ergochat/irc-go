@@ -304,6 +304,11 @@ func (irc *Connection) waitForStop() {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
 
+	// run disconnect callbacks here: they will happen-after all readLoop-triggered
+	// event callback, since we waited for readLoop to exit. Connected() is false
+	// while these are executing.
+	irc.runDisconnectCallbacks()
+
 	if irc.socket != nil {
 		irc.socket.Close()
 	}

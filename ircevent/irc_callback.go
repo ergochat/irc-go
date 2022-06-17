@@ -13,7 +13,8 @@ import (
 
 const (
 	// fake events that we manage specially
-	registrationEvent = "*REGISTRATION"
+	registrationEvent = "\x00REGISTRATION"
+	disconnectEvent   = "\x00DISCONNECT"
 )
 
 // Tuple type for uniquely identifying callbacks
@@ -158,6 +159,15 @@ func (irc *Connection) AddConnectCallback(callback func(ircmsg.Message)) (id Cal
 	id376 := irc.AddCallback(RPL_ENDOFMOTD, callback)
 	irc.addCallback(ERR_NOMOTD, callback, false, id376.id)
 	return CallbackID{command: registrationEvent, id: id376.id}
+}
+
+// Adds a callback to be run when disconnection from the server is detected;
+// this may be a connectivity failure, a server-initiated disconnection, or
+// a client-initiated Quit(). These callbacks are run after the last message
+// from the server is processed, before any reconnection attempt. The contents
+// of the Message object supplied to the callback are undefined.
+func (irc *Connection) AddDisconnectCallback(callback func(ircmsg.Message)) (id CallbackID) {
+	return irc.AddCallback(disconnectEvent, callback)
 }
 
 func (irc *Connection) getCallbacks(code string) (result []callbackPair) {
@@ -317,11 +327,7 @@ func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string) 
 // Execute all callbacks associated with a given event.
 func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	if !irc.AllowPanic {
-		defer func() {
-			if r := recover(); r != nil {
-				irc.Log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
-			}
-		}()
+		defer irc.handleCallbackPanic()
 	}
 
 	// handle batch start or end
@@ -356,6 +362,23 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 
 	// OK, it's a normal IRC command
 	irc.HandleMessage(msg)
+}
+
+func (irc *Connection) handleCallbackPanic() {
+	if r := recover(); r != nil {
+		irc.Log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
+	}
+}
+
+func (irc *Connection) runDisconnectCallbacks() {
+	if !irc.AllowPanic {
+		defer irc.handleCallbackPanic()
+	}
+
+	callbackPairs := irc.getCallbacks(disconnectEvent)
+	for _, pair := range callbackPairs {
+		pair.callback(ircmsg.Message{})
+	}
 }
 
 // HandleMessage handles an IRC line using the available handlers. This can be
