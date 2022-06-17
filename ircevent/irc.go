@@ -766,9 +766,17 @@ func (irc *Connection) negotiateCaps() error {
 		}
 	}
 
+	saslError := func(err error) error {
+		if !irc.SASLOptional {
+			return err
+		} else {
+			return nil
+		}
+	}
+
 	if irc.UseSASL {
 		if !sliceContains("sasl", acknowledgedCaps) {
-			return SASLFailed
+			return saslError(SASLFailed)
 		} else {
 			irc.Send("AUTHENTICATE", irc.SASLMech)
 		}
@@ -777,12 +785,12 @@ func (irc *Connection) negotiateCaps() error {
 		select {
 		case res := <-irc.saslChan:
 			if res.Failed {
-				return res.Err
+				return saslError(res.Err)
 			}
 		case <-timeout.C:
 			// if we expect to be able to SASL, failure to SASL should be treated
 			// as a connection error:
-			return SASLFailed
+			return saslError(SASLFailed)
 		case <-irc.end:
 			return ServerDisconnected
 		}

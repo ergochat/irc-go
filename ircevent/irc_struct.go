@@ -48,9 +48,10 @@ type Connection struct {
 	WebIRC          []string // parameters for the WEBIRC command
 	Password        string   // server password (PASS command)
 	RequestCaps     []string // IRCv3 capabilities to request (failure is non-fatal)
-	SASLLogin       string   // SASL credentials to log in with (failure is fatal)
+	SASLLogin       string   // SASL credentials to log in with (failure is fatal by default)
 	SASLPassword    string
 	SASLMech        string
+	SASLOptional    bool // make SASL failure non-fatal
 	QuitMessage     string
 	Version         string
 	Timeout         time.Duration
