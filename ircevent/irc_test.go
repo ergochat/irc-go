@@ -318,17 +318,28 @@ func TestConnectionCallbacks(t *testing.T) {
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 	debugTest(irccon1)
 	resultChan := make(chan map[string]string, 1)
+	disconnectCalled := false
 	irccon1.AddConnectCallback(func(e ircmsg.Message) {
 		resultChan <- irccon1.ISupport()
+	})
+	irccon1.AddDisconnectCallback(func(e ircmsg.Message) {
+		disconnectCalled = true
 	})
 	err := irccon1.Connect()
 	if err != nil {
 		panic(err)
 	}
-	go irccon1.Loop()
+	loopExited := make(chan empty)
+	go func() {
+		irccon1.Loop()
+		close(loopExited)
+	}()
 	isupport := <-resultChan
 	if casemapping := isupport["CASEMAPPING"]; casemapping == "" {
 		t.Errorf("casemapping not detected in 005 RPL_ISUPPORT output; this is unheard of")
 	}
+	assertEqual(disconnectCalled, false)
 	irccon1.Quit()
+	<-loopExited
+	assertEqual(disconnectCalled, true)
 }
