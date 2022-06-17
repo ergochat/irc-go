@@ -109,6 +109,12 @@ func (irc *Connection) recordPong(param string) {
 func (irc *Connection) readLoop() {
 	defer irc.wg.Done()
 
+	defer func() {
+		if irc.registered {
+			irc.runDisconnectCallbacks()
+		}
+	}()
+
 	msgChan := make(chan string)
 	errChan := make(chan error)
 	go readMsgLoop(irc.socket, irc.MaxLineLen, msgChan, errChan, irc.end)
@@ -308,11 +314,6 @@ func (irc *Connection) Loop() {
 func (irc *Connection) waitForStop() {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
-
-	// run disconnect callbacks here: they will happen-after all readLoop-triggered
-	// event callback, since we waited for readLoop to exit. Connected() is false
-	// while these are executing.
-	irc.runDisconnectCallbacks()
 
 	if irc.socket != nil {
 		irc.socket.Close()
