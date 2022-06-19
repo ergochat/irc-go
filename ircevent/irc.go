@@ -278,12 +278,12 @@ func (irc *Connection) Loop() {
 	for {
 		irc.waitForStop()
 
-		if err := irc.getError(); err != nil {
-			irc.Log.Printf("Error, disconnected: %s\n", err)
-		}
-
 		if irc.isQuitting() {
 			return
+		}
+
+		if err := irc.getError(); err != nil {
+			irc.Log.Printf("Error, disconnected: %s\n", err)
 		}
 
 		delay := time.Until(lastReconnect.Add(irc.ReconnectFreq))
