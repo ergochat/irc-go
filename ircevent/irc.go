@@ -20,6 +20,7 @@ package ircevent
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -564,6 +565,41 @@ func (irc *Connection) closeEndNoMutex() {
 	}
 }
 
+func (irc *Connection) dial() (socket net.Conn, err error) {
+	if irc.DialContext == nil {
+		irc.DialContext = (&net.Dialer{}).DialContext
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), irc.Timeout)
+	defer cancel()
+	socket, err = irc.DialContext(ctx, "tcp", irc.Server)
+	if err != nil {
+		return
+	}
+	if !irc.UseTLS {
+		return
+	}
+
+	// see tls.DialWithDialer
+	if irc.TLSConfig == nil {
+		irc.TLSConfig = &tls.Config{}
+	}
+	if irc.TLSConfig.ServerName == "" && !irc.TLSConfig.InsecureSkipVerify {
+		host, _, err := net.SplitHostPort(irc.Server)
+		if err == nil {
+			irc.TLSConfig.ServerName = host
+		} else {
+			irc.TLSConfig.ServerName = irc.Server
+		}
+	}
+	tlsSocket := tls.Client(socket, irc.TLSConfig)
+	err = tlsSocket.HandshakeContext(ctx)
+	if err != nil {
+		socket.Close()
+		return nil, err
+	}
+	return tlsSocket, nil
+}
+
 // Connect to a given server using the current connection configuration.
 // This function also takes care of identification if a password is provided.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1
@@ -650,13 +686,7 @@ func (irc *Connection) Connect() (err error) {
 		irc.Log.Printf("Connecting to %s (TLS: %t)\n", irc.Server, irc.UseTLS)
 	}
 
-	var socket net.Conn
-	if irc.UseTLS {
-		dialer := &net.Dialer{Timeout: irc.Timeout}
-		socket, err = tls.DialWithDialer(dialer, "tcp", irc.Server, irc.TLSConfig)
-	} else {
-		socket, err = net.DialTimeout("tcp", irc.Server, irc.Timeout)
-	}
+	socket, err := irc.dial()
 	if err != nil {
 		return err
 	}

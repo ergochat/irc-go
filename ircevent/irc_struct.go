@@ -5,6 +5,7 @@
 package ircevent
 
 import (
+	"context"
 	"crypto/tls"
 	"log"
 	"net"
@@ -64,6 +65,8 @@ type Connection struct {
 	Debug           bool
 	AllowPanic      bool // if set, don't recover() from panics in callbacks
 	AllowTruncation bool // if set, truncate lines exceeding MaxLineLen and send them
+	// set this to configure how the connection is made (e.g. via a proxy server):
+	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	// networking and synchronization
 	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
