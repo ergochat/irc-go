@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to irc-go will be documented in this file.
 
+## [0.2.0] - 2022-06-22
+
+irc-go v0.2.0 is a new tagged release, incorporating enhancements to `ircevent`, our IRC client library. There are no API breaks relative to v0.1.0.
+
+Thanks to [@ludviglundgren](https://github.com/ludviglundgren), [@Mikaela](https://github.com/Mikaela), and [@progval](https://github.com/progval) for helpful discussions, testing, and code reviews.
+
+### Added
+* Added `(*ircevent.Connection).GetLabeledReponse`, a synchronous API for getting a [labeled message response](https://ircv3.net/specs/extensions/labeled-response). (#74, thanks [@progval](https://github.com/progval)!)
+* Added `(*ircevent.Connection).AddDisconnectCallback`, which allows registering callbacks that are invoked whenever ircevent detects disconnection from the server. (#78, #80, thanks [@ludviglundgren](https://github.com/ludviglundgren)!)
+* Added `(ircevent.Connection).SASLOptional`; when set to true, this makes failure to SASL non-fatal, which can simplify compatibility with legacy services implementations (#78, #83, thanks [@ludviglundgren](https://github.com/ludviglundgren)!)
+* `ircevent` now exposes most commonly used numerics as package constants, e.g. `ircevent.RPL_WHOISUSER` (`311`)
+
+### Fixed
+* Calling `(*ircevent.Connection).Reconnect` now takes immediate effect, even if the client is waiting for `ReconnectFreq` to expire (i.e. automatic reconnection has been throttled) (#79)
+* `(*ircevent.Connection).CurrentNick()` now returns the correct value when called from a `NICK` callback (#78, #84, thanks [@ludviglundgren](https://github.com/ludviglundgren)!)
+
 ## [0.1.0] - 2022-01-19
 
 irc-go v0.1.0 is our first tagged release. Although the project is not yet API-stable, we envision this as the first step towards full API stability. All API breaks will be documented in this changelog; we expect any such breaks to be modest in scope.
