@@ -85,6 +85,17 @@ var decodetests = []testcode{
 		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", ":hi")},
 	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :hi\r\n",
 		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "hi")},
+	// invalid UTF8:
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :hi\xf0\xf0\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "hi\xf0\xf0")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :\xf0hi\xf0\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "\xf0hi\xf0")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :\xff\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "\xff")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b :\xf9g\xa6=\xcf6s\xb2\xe2\xaf\xa0kSN?\x95\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "\xf9g\xa6=\xcf6s\xb2\xe2\xaf\xa0kSN?\x95")},
+	{"@time=2848 :dan-!d@localhost PRIVMSG a:b \xf9g\xa6=\xcf6s\xb2\xe2\xaf\xa0kSN?\x95\r\n",
+		MakeMessage(map[string]string{"time": "2848"}, "dan-!d@localhost", "PRIVMSG", "a:b", "\xf9g\xa6=\xcf6s\xb2\xe2\xaf\xa0kSN?\x95")},
 }
 
 type testparseerror struct {
