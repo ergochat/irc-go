@@ -118,6 +118,7 @@ var decodetesterrors = []testparseerror{
 	{"@tag1=1;tag2=2 :dan \r\n", ErrorLineIsEmpty},
 	{"@tag1=1;tag2=2 :dan      \r\n", ErrorLineIsEmpty},
 	{"@tag1=1;tag2=2\x00 :dan      \r\n", ErrorLineContainsBadChar},
+	{"@tag1=1;tag2=2\xff :dan PRIVMSG #channel hi\r\n", ErrorInvalidTagContent},
 	{"@tag1=1;tag2=2\x00 :shivaram PRIVMSG #channel  hi\r\n", ErrorLineContainsBadChar},
 	{"privmsg #channel :command injection attempt \n:Nickserv PRIVMSG user :Please re-enter your password", ErrorLineContainsBadChar},
 	{"privmsg #channel :command injection attempt \r:Nickserv PRIVMSG user :Please re-enter your password", ErrorLineContainsBadChar},
