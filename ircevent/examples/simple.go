@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -17,6 +18,10 @@ func getenv(key, defaultValue string) (value string) {
 		value = defaultValue
 	}
 	return
+}
+
+func equalCaseInsensitive(s1, s2 string) bool {
+	return s1 == s2 || strings.ToLower(s1) == strings.ToLower(s2)
 }
 
 func main() {
@@ -44,7 +49,36 @@ func main() {
 		}
 		irc.Join(channel)
 	})
-	irc.AddCallback("JOIN", func(e ircmsg.Message) {}) // TODO try to rejoin if we *don't* get this
+	irc.AddCallback("JOIN", func(e ircmsg.Message) {
+		irc.Send("WHO", channel)
+	})
+	// implicitly synchronized by the callback handlers,
+	// if this state were accessed from another goroutine we could use a mutex
+	var channelNUHs []ircmsg.NUH
+	var whoComplete bool = false
+	irc.AddCallback(ircevent.RPL_WHOREPLY, func(e ircmsg.Message) {
+		if !equalCaseInsensitive(e.Params[1], channel) {
+			return // drop responses for other channels
+		}
+		nuh := ircmsg.NUH{
+			Name: e.Params[5],
+			User: e.Params[2],
+			Host: e.Params[3],
+		}
+		channelNUHs = append(channelNUHs, nuh)
+	})
+	irc.AddCallback(ircevent.RPL_ENDOFWHO, func(e ircmsg.Message) {
+		if !equalCaseInsensitive(e.Params[1], channel) {
+			return
+		}
+		whoComplete = true
+		if whoComplete {
+			fmt.Printf("WHO response complete, got %d channel members:\n", len(channelNUHs))
+			for i, nuh := range channelNUHs {
+				fmt.Printf("%4d: %s!%s@%s\n", i, nuh.Name, nuh.User, nuh.Host)
+			}
+		}
+	})
 	irc.AddCallback("PRIVMSG", func(e ircmsg.Message) {
 		if len(e.Params) < 2 {
 			return
