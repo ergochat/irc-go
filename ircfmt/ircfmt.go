@@ -36,7 +36,9 @@ type IRCColor struct {
 	Value uint8
 }
 
-func stringToColor(str string) (color IRCColor) {
+// ParseColor converts a string representation of an IRC color code, e.g. "04",
+// into a normalized IRCColor, e.g. IRCColor{true, 4}.
+func ParseColor(str string) (color IRCColor) {
 	// "99 - Default Foreground/Background - Not universally supported."
 	// normalize 99 to IRCColor{} meaning "unset":
 	if code, err := strconv.ParseUint(str, 10, 8); err == nil && code < 99 {
@@ -123,11 +125,11 @@ func Split(raw string) (result []FormattedSubstring) {
 			// preferentially match the "\x0399,01" form, then "\x0399";
 			// if neither of those matches, then it's a reset
 			if matches := colorForeBackRe.FindStringSubmatch(raw); len(matches) != 0 {
-				chunk.ForegroundColor = stringToColor(matches[1])
-				chunk.BackgroundColor = stringToColor(matches[2])
+				chunk.ForegroundColor = ParseColor(matches[1])
+				chunk.BackgroundColor = ParseColor(matches[2])
 				raw = raw[len(matches[0]):]
 			} else if matches := colorForeRe.FindStringSubmatch(raw); len(matches) != 0 {
-				chunk.ForegroundColor = stringToColor(matches[1])
+				chunk.ForegroundColor = ParseColor(matches[1])
 				raw = raw[len(matches[0]):]
 			} else {
 				chunk.ForegroundColor = IRCColor{}
