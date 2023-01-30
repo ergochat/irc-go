@@ -57,7 +57,7 @@ type FormattedSubstring struct {
 	Bold            bool
 	Monospace       bool
 	Strikethrough   bool
-	Underlined      bool
+	Underline       bool
 	Italic          bool
 	ReverseColor    bool
 }
@@ -114,7 +114,7 @@ func Split(raw string) (result []FormattedSubstring) {
 		case strikethrough[0]:
 			chunk.Strikethrough = !chunk.Strikethrough
 		case underline[0]:
-			chunk.Underlined = !chunk.Underlined
+			chunk.Underline = !chunk.Underline
 		case italic[0]:
 			chunk.Italic = !chunk.Italic
 		case reverseColour[0]:
