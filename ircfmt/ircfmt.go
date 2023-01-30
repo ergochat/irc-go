@@ -57,7 +57,7 @@ type FormattedSubstring struct {
 	Bold            bool
 	Monospace       bool
 	Strikethrough   bool
-	Underlined      bool
+	Underline       bool
 	Italic          bool
 	ReverseColor    bool
 }
@@ -114,7 +114,7 @@ func Split(raw string) (result []FormattedSubstring) {
 		case strikethrough[0]:
 			chunk.Strikethrough = !chunk.Strikethrough
 		case underline[0]:
-			chunk.Underlined = !chunk.Underlined
+			chunk.Underline = !chunk.Underline
 		case italic[0]:
 			chunk.Italic = !chunk.Italic
 		case reverseColour[0]:
@@ -144,8 +144,6 @@ func Split(raw string) (result []FormattedSubstring) {
 var (
 	// valtoescape replaces most of IRC characters with our escapes.
 	valtoescape = strings.NewReplacer("$", "$$", colour, "$c", reverseColour, "$v", bold, "$b", italic, "$i", strikethrough, "$s", underline, "$u", monospace, "$m", reset, "$r")
-	// valToStrip replaces most of the IRC characters with nothing
-	valToStrip = strings.NewReplacer(colour, "$c", reverseColour, "", bold, "", italic, "", strikethrough, "", underline, "", monospace, "", reset, "")
 
 	// escapetoval contains most of our escapes and how they map to real IRC characters.
 	// intentionally skips colour, since that's handled elsewhere.

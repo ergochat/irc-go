@@ -108,7 +108,11 @@ var splitTestCases = []splitTestCase{
 		{Content: "b", Bold: false},
 	}},
 	{"\x02\x1fa", []FormattedSubstring{
-		{Content: "a", Bold: true, Underlined: true},
+		{Content: "a", Bold: true, Underline: true},
+	}},
+	{"\x1e\x1fa\x1fb", []FormattedSubstring{
+		{Content: "a", Strikethrough: true, Underline: true},
+		{Content: "b", Strikethrough: true, Underline: false},
 	}},
 	{"\x02\x031,0a\x0f", []FormattedSubstring{
 		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
