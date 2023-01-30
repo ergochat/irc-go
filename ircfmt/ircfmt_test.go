@@ -1,6 +1,9 @@
 package ircfmt
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 type testcase struct {
 	escaped   string
@@ -52,11 +55,15 @@ var stripTests = []testcase{
 	{"", ""},
 	{"test string", "test string"},
 	{"test \x03", "test "},
+	{"test \x031x", "test x"},
+	{"test \x031,11x", "test x"},
+	{"test \x0311,0x", "test x"},
+	{"test \x039,99", "test "},
 	{"test \x0301string", "test string"},
 	{"test\x031,2 string", "test string"},
 	{"test\x0301,02 string", "test string"},
 	{"test\x03, string", "test, string"},
-	{"test\x03,12 string", "test string"},
+	{"test\x03,12 string", "test,12 string"},
 	{"\x02\x031,2\x11\x16\x1d\x1e\x0f\x1f", ""},
 	{"\x03", ""},
 	{"\x03,", ","},
@@ -66,7 +73,84 @@ var stripTests = []testcase{
 	{"\x03\x03\x03\x03\x03\x03\x03", ""},
 	{"\x03\x03\x03\x03\x03\x03\x03\x03", ""},
 	{"\x03,\x031\x0312\x0334,\x0356,\x0378,90\x031234", ",,,34"},
-	{"\x0312,12\x03121212\x0311,333\x03,3\x038\x0399\x0355\x03test", "12123test"},
+	{"\x0312,12\x03121212\x0311,333\x03,3\x038\x0399\x0355\x03test", "12123,3test"},
+}
+
+type splitTestCase struct {
+	input  string
+	output []FormattedSubstring
+}
+
+var splitTestCases = []splitTestCase{
+	{"", nil},
+	{"a", []FormattedSubstring{
+		{Content: "a"},
+	}},
+	{"\x02", nil},
+	{"\x02\x03", nil},
+	{"\x0311", nil},
+	{"\x0311,13", nil},
+	{"\x02a", []FormattedSubstring{
+		{Content: "a", Bold: true},
+	}},
+	{"\x02ab", []FormattedSubstring{
+		{Content: "ab", Bold: true},
+	}},
+	{"c\x02ab", []FormattedSubstring{
+		{Content: "c"},
+		{Content: "ab", Bold: true},
+	}},
+	{"\x02a\x02", []FormattedSubstring{
+		{Content: "a", Bold: true},
+	}},
+	{"\x02a\x02b", []FormattedSubstring{
+		{Content: "a", Bold: true},
+		{Content: "b", Bold: false},
+	}},
+	{"\x02\x1fa", []FormattedSubstring{
+		{Content: "a", Bold: true, Underlined: true},
+	}},
+	{"\x02\x031,0a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x0301,0a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x031,00a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x0301,00a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x031,0a\x0fb", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "b"},
+	}},
+	{"\x02\x031,0a\x02b", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "b", Bold: false, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x031,", []FormattedSubstring{
+		{Content: ",", ForegroundColor: IRCColor{true, 1}},
+	}},
+	{"\x0311,", []FormattedSubstring{
+		{Content: ",", ForegroundColor: IRCColor{true, 11}},
+	}},
+	{"\x0311,13ab", []FormattedSubstring{
+		{Content: "ab", ForegroundColor: IRCColor{true, 11}, BackgroundColor: IRCColor{true, 13}},
+	}},
+	{"\x0399,04the quick \t brown fox", []FormattedSubstring{
+		{Content: "the quick \t brown fox", BackgroundColor: IRCColor{true, 4}},
+	}},
+}
+
+func TestSplit(t *testing.T) {
+	for i, testCase := range splitTestCases {
+		actual := Split(testCase.input)
+		if !reflect.DeepEqual(actual, testCase.output) {
+			t.Errorf("Test case %d failed: expected %#v, got %#v", i, testCase.output, actual)
+		}
+	}
 }
 
 func TestEscape(t *testing.T) {

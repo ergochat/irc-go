@@ -14,7 +14,7 @@ import (
 const channel = "#go-eventirc-test"
 const dict = "abcdefghijklmnopqrstuvwxyz"
 
-//Spammy
+// Spammy
 const verbose_tests = false
 const debug_tests = true
 
