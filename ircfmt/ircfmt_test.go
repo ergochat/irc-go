@@ -96,6 +96,10 @@ var splitTestCases = []splitTestCase{
 	{"\x02ab", []FormattedSubstring{
 		{Content: "ab", Bold: true},
 	}},
+	{"c\x02ab", []FormattedSubstring{
+		{Content: "c"},
+		{Content: "ab", Bold: true},
+	}},
 	{"\x02a\x02", []FormattedSubstring{
 		{Content: "a", Bold: true},
 	}},
@@ -107,6 +111,15 @@ var splitTestCases = []splitTestCase{
 		{Content: "a", Bold: true, Underlined: true},
 	}},
 	{"\x02\x031,0a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x0301,0a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x031,00a\x0f", []FormattedSubstring{
+		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+	}},
+	{"\x02\x0301,00a\x0f", []FormattedSubstring{
 		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
 	}},
 	{"\x02\x031,0a\x0fb", []FormattedSubstring{
