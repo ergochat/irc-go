@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to irc-go will be documented in this file.
 
+## [0.3.0] - 2022-02-13
+
+irc-go v0.3.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to v0.1.0.
+
+Thanks to [@kofany](https://github.com/kofany) for helpful discussions.
+
+### Added
+* Added `(*ircevent.Connection).DialContext`, an optional callback for customizing how ircevent creates IRC connections. Clients can create a custom `net.Dialer` instance and pass in its `DialContext` method, or use a callback that invokes a proxy, e.g. a SOCKS proxy (see `ircevent/examples/proxy.go` for an example). (#64, #91)
+* Added `ircfmt.Split()`, which splits an IRC message containing formatting codes into a machine-readable representation (a slice of `ircfmt.FormattedSubstring`). (#89)
+* Added `ircfmt.ParseColor()`, which parses an IRC color code string into a machine-readable representation (an `ircfmt.ColorCode`). (#89, #92)
+
+### Fixed
+* Fixed some edge cases in `ircfmt.Strip()` (#89)
+
+### Added
+
 ## [0.2.0] - 2022-06-22
 
 irc-go v0.2.0 is a new tagged release, incorporating enhancements to `ircevent`, our IRC client library. There are no API breaks relative to v0.1.0.
