@@ -3,7 +3,7 @@ All notable changes to irc-go will be documented in this file.
 
 ## [0.3.0] - 2022-02-13
 
-irc-go v0.3.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to v0.1.0.
+irc-go v0.3.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to previous tagged versions.
 
 Thanks to [@kofany](https://github.com/kofany) for helpful discussions.
 
