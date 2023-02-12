@@ -115,36 +115,36 @@ var splitTestCases = []splitTestCase{
 		{Content: "b", Strikethrough: true, Underline: false},
 	}},
 	{"\x02\x031,0a\x0f", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 	}},
 	{"\x02\x0301,0a\x0f", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 	}},
 	{"\x02\x031,00a\x0f", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 	}},
 	{"\x02\x0301,00a\x0f", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 	}},
 	{"\x02\x031,0a\x0fb", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 		{Content: "b"},
 	}},
 	{"\x02\x031,0a\x02b", []FormattedSubstring{
-		{Content: "a", Bold: true, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
-		{Content: "b", Bold: false, ForegroundColor: IRCColor{true, 1}, BackgroundColor: IRCColor{true, 0}},
+		{Content: "a", Bold: true, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
+		{Content: "b", Bold: false, ForegroundColor: ColorCode{true, 1}, BackgroundColor: ColorCode{true, 0}},
 	}},
 	{"\x031,", []FormattedSubstring{
-		{Content: ",", ForegroundColor: IRCColor{true, 1}},
+		{Content: ",", ForegroundColor: ColorCode{true, 1}},
 	}},
 	{"\x0311,", []FormattedSubstring{
-		{Content: ",", ForegroundColor: IRCColor{true, 11}},
+		{Content: ",", ForegroundColor: ColorCode{true, 11}},
 	}},
 	{"\x0311,13ab", []FormattedSubstring{
-		{Content: "ab", ForegroundColor: IRCColor{true, 11}, BackgroundColor: IRCColor{true, 13}},
+		{Content: "ab", ForegroundColor: ColorCode{true, 11}, BackgroundColor: ColorCode{true, 13}},
 	}},
 	{"\x0399,04the quick \t brown fox", []FormattedSubstring{
-		{Content: "the quick \t brown fox", BackgroundColor: IRCColor{true, 4}},
+		{Content: "the quick \t brown fox", BackgroundColor: ColorCode{true, 4}},
 	}},
 }
 

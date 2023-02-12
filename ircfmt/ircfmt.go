@@ -27,20 +27,20 @@ const (
 	colours1 string = "0123456789"
 )
 
-// IRCColor is a normalized representation of an IRC color code,
+// ColorCode is a normalized representation of an IRC color code,
 // as per this de facto specification: https://modern.ircdocs.horse/formatting.html#color
 // The zero value of the type represents a default or unset color,
-// whereas IRCColor{true, 0} represents the color white.
-type IRCColor struct {
+// whereas ColorCode{true, 0} represents the color white.
+type ColorCode struct {
 	IsSet bool
 	Value uint8
 }
 
 // ParseColor converts a string representation of an IRC color code, e.g. "04",
-// into a normalized IRCColor, e.g. IRCColor{true, 4}.
-func ParseColor(str string) (color IRCColor) {
+// into a normalized ColorCode, e.g. ColorCode{true, 4}.
+func ParseColor(str string) (color ColorCode) {
 	// "99 - Default Foreground/Background - Not universally supported."
-	// normalize 99 to IRCColor{} meaning "unset":
+	// normalize 99 to ColorCode{} meaning "unset":
 	if code, err := strconv.ParseUint(str, 10, 8); err == nil && code < 99 {
 		color.IsSet = true
 		color.Value = uint8(code)
@@ -52,8 +52,8 @@ func ParseColor(str string) (color IRCColor) {
 // formatting data.
 type FormattedSubstring struct {
 	Content         string
-	ForegroundColor IRCColor
-	BackgroundColor IRCColor
+	ForegroundColor ColorCode
+	BackgroundColor ColorCode
 	Bold            bool
 	Monospace       bool
 	Strikethrough   bool
@@ -132,8 +132,8 @@ func Split(raw string) (result []FormattedSubstring) {
 				chunk.ForegroundColor = ParseColor(matches[1])
 				raw = raw[len(matches[0]):]
 			} else {
-				chunk.ForegroundColor = IRCColor{}
-				chunk.BackgroundColor = IRCColor{}
+				chunk.ForegroundColor = ColorCode{}
+				chunk.BackgroundColor = ColorCode{}
 			}
 		default:
 			// should be impossible, but just ignore it
