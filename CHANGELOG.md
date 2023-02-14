@@ -15,8 +15,6 @@ Thanks to [@kofany](https://github.com/kofany) for helpful discussions.
 ### Fixed
 * Fixed some edge cases in `ircfmt.Strip()` (#89)
 
-### Added
-
 ## [0.2.0] - 2022-06-22
 
 irc-go v0.2.0 is a new tagged release, incorporating enhancements to `ircevent`, our IRC client library. There are no API breaks relative to v0.1.0.
