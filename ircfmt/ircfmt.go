@@ -205,7 +205,9 @@ var (
 		"light blue":  "12",
 		"pink":        "13",
 		"grey":        "14",
+		"gray":        "14",
 		"light grey":  "15",
+		"light gray":  "15",
 		"default":     "99",
 	}
 
