@@ -24,3 +24,15 @@ func TestTruncateUTF8(t *testing.T) {
 	// shouldn't truncate the whole string
 	assertEqual(TruncateUTF8Safe("\xff\xff\xff\xff\xff\xff", 5), "\xff\xff")
 }
+
+func BenchmarkTruncateUTF8Invalid(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		TruncateUTF8Safe("\xff\xff\xff\xff\xff\xff", 5)
+	}
+}
+
+func BenchmarkTruncateUTF8Valid(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		TruncateUTF8Safe("12345🐬", 8)
+	}
+}
