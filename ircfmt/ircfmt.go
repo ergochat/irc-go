@@ -21,11 +21,11 @@ const (
 	reset         string = "\x0f"
 
 	metacharacters = (bold + colour + monospace + reverseColour + italic + strikethrough + underline + reset)
-
-	// valid characters in a colour code character, for speed
-	// TODO remove this
-	colours1 string = "0123456789"
 )
+
+func isDigit(r rune) bool {
+	return '0' <= r && r <= '9'
+}
 
 // ColorCode is a normalized representation of an IRC color code,
 // as per this de facto specification: https://modern.ircdocs.horse/formatting.html#color
@@ -232,7 +232,7 @@ func Escape(in string) string {
 			out.WriteString("$c")
 			inRunes = inRunes[2:] // strip colour code chars
 
-			if len(inRunes) < 1 || !strings.Contains(colours1, string(inRunes[0])) {
+			if len(inRunes) < 1 || !isDigit(inRunes[0]) {
 				out.WriteString("[]")
 				continue
 			}
@@ -240,14 +240,14 @@ func Escape(in string) string {
 			var foreBuffer, backBuffer string
 			foreBuffer += string(inRunes[0])
 			inRunes = inRunes[1:]
-			if 0 < len(inRunes) && strings.Contains(colours1, string(inRunes[0])) {
+			if 0 < len(inRunes) && isDigit(inRunes[0]) {
 				foreBuffer += string(inRunes[0])
 				inRunes = inRunes[1:]
 			}
-			if 1 < len(inRunes) && inRunes[0] == ',' && strings.Contains(colours1, string(inRunes[1])) {
+			if 1 < len(inRunes) && inRunes[0] == ',' && isDigit(inRunes[1]) {
 				backBuffer += string(inRunes[1])
 				inRunes = inRunes[2:]
-				if 0 < len(inRunes) && strings.Contains(colours1, string(inRunes[0])) {
+				if 0 < len(inRunes) && isDigit(inRunes[1]) {
 					backBuffer += string(inRunes[0])
 					inRunes = inRunes[1:]
 				}
