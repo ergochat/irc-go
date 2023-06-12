@@ -23,10 +23,6 @@ const (
 	metacharacters = (bold + colour + monospace + reverseColour + italic + strikethrough + underline + reset)
 )
 
-func isDigit(r rune) bool {
-	return '0' <= r && r <= '9'
-}
-
 // ColorCode is a normalized representation of an IRC color code,
 // as per this de facto specification: https://modern.ircdocs.horse/formatting.html#color
 // The zero value of the type represents a default or unset color,
@@ -285,6 +281,10 @@ func Escape(in string) string {
 	}
 
 	return out.String()
+}
+
+func isDigit(r rune) bool {
+	return '0' <= r && r <= '9' // don't use unicode.IsDigit, it includes non-ASCII numerals
 }
 
 // Strip takes a raw IRC string and removes it with all formatting codes removed
