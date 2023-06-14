@@ -1,6 +1,18 @@
 # Changelog
 All notable changes to irc-go will be documented in this file.
 
+## [0.4.0] - 2023-06-14
+
+irc-go v0.4.0 is a new tagged release. It incorporates enhancements to `ircmsg`, our IRC protocol handling library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to previous tagged versions.
+
+### Changed
+* `ircmsg.ParseLineStrict` now does UTF8-aware truncation of the parsed message, using the same algorithm as `ircmsg.LineBytesStrict` (if the truncated message is invalid as UTF8, up to 3 additional bytes are removed in an attempt to make it valid)
+* `TruncateUTF8Safe` was moved from `ircutils` to `ircmsg`. (An alias is provided in `ircutils` for compatibility.)
+
+### Added
+* `ircfmt.Unescape` now accepts the American spellings "gray" and "light gray", in addition to "grey" and "light grey"
+
+
 ## [0.3.0] - 2023-02-13
 
 irc-go v0.3.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to previous tagged versions.
