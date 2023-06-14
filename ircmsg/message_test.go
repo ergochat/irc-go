@@ -39,6 +39,13 @@ var decodelentests = []testcodewithlen{
 		MakeMessage(nil, "", "TESTMS"), true},
 	{"TESTMSG\r\n", 9,
 		MakeMessage(nil, "", "TESTMSG"), false},
+	{"PRIVMSG #chat :12 345🐬", 27,
+		MakeMessage(nil, "", "PRIVMSG", "#chat", "12 345🐬"), false},
+	// test utf-8 aware truncation:
+	{"PRIVMSG #chat :12 345🐬", 26,
+		MakeMessage(nil, "", "PRIVMSG", "#chat", "12 345"), true},
+	{"PRIVMSG #chat :12 345", 23,
+		MakeMessage(nil, "", "PRIVMSG", "#chat", "12 345"), false},
 }
 
 // map[string]string{"time": "12732", "re": ""}
