@@ -60,7 +60,7 @@ var (
 	NoLabeledResponse       = errors.New("The server failed to send a labeled response to the command")
 
 	serverDidNotQuit = errors.New("server did not respond to QUIT")
-	clientHasQuit    = errors.New("client has called Quit()")
+	ClientHasQuit    = errors.New("client has called Quit()")
 )
 
 // Call this on an error forcing a disconnection:
@@ -613,7 +613,7 @@ func (irc *Connection) Connect() (err error) {
 		defer irc.stateMutex.Unlock()
 
 		if irc.quit {
-			return clientHasQuit // check this again in case of Quit() while we were asleep
+			return ClientHasQuit // check this again in case of Quit() while we were asleep
 		}
 
 		// mark Server as stopped since there can be an error during connect
