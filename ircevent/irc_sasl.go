@@ -1,9 +1,9 @@
 package ircevent
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
-	"fmt"
 
 	"github.com/ergochat/irc-go/ircmsg"
 )
@@ -29,10 +29,58 @@ func (irc *Connection) submitSASLResult(r saslResult) {
 	}
 }
 
+func splitSaslResponse(raw []byte) (result []string) {
+	// https://ircv3.net/specs/extensions/sasl-3.1#the-authenticate-command
+	// "The response is encoded in Base64 (RFC 4648), then split to 400-byte chunks,
+	// and each chunk is sent as a separate AUTHENTICATE command. Empty (zero-length)
+	// responses are sent as AUTHENTICATE +. If the last chunk was exactly 400 bytes
+	// long, it must also be followed by AUTHENTICATE + to signal end of response."
+
+	if len(raw) == 0 {
+		return []string{"+"}
+	}
+
+	response := base64.StdEncoding.EncodeToString(raw)
+	lastLen := 0
+	for len(response) > 0 {
+		// TODO once we require go 1.21, this can be: lastLen = min(len(response), 400)
+		lastLen = len(response)
+		if lastLen > 400 {
+			lastLen = 400
+		}
+		result = append(result, response[:lastLen])
+		response = response[lastLen:]
+	}
+
+	if lastLen == 400 {
+		result = append(result, "+")
+	}
+
+	return result
+}
+
+func (irc *Connection) composeSaslPlainResponse() []byte {
+	var buf bytes.Buffer
+	buf.WriteString(irc.SASLLogin) // optional authzid, included for compatibility
+	buf.WriteByte('\x00')
+	buf.WriteString(irc.SASLLogin) // authcid
+	buf.WriteByte('\x00')
+	buf.WriteString(irc.SASLPassword) // passwd
+	return buf.Bytes()
+}
+
 func (irc *Connection) setupSASLCallbacks() {
 	irc.AddCallback("AUTHENTICATE", func(e ircmsg.Message) {
-		str := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s\x00%s\x00%s", irc.SASLLogin, irc.SASLLogin, irc.SASLPassword)))
-		irc.Send("AUTHENTICATE", str)
+		switch irc.SASLMech {
+		case "PLAIN":
+			for _, resp := range splitSaslResponse(irc.composeSaslPlainResponse()) {
+				irc.Send("AUTHENTICATE", resp)
+			}
+		case "EXTERNAL":
+			irc.Send("AUTHENTICATE", "+")
+		default:
+			// impossible, nothing to do
+		}
 	})
 
 	irc.AddCallback(RPL_LOGGEDOUT, func(e ircmsg.Message) {

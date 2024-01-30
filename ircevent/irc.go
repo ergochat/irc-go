@@ -659,8 +659,8 @@ func (irc *Connection) Connect() (err error) {
 		if irc.SASLMech == "" {
 			irc.SASLMech = "PLAIN"
 		}
-		if irc.SASLMech != "PLAIN" {
-			return errors.New("only SASL PLAIN is supported")
+		if !(irc.SASLMech == "PLAIN" || irc.SASLMech == "EXTERNAL") {
+			return fmt.Errorf("unsupported SASL mechanism %s", irc.SASLMech)
 		}
 		if irc.MaxLineLen == 0 {
 			irc.MaxLineLen = 512
