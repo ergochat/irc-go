@@ -2,10 +2,10 @@ package ircevent
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 
 	"github.com/ergochat/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircutils"
 )
 
 type saslResult struct {
@@ -29,36 +29,6 @@ func (irc *Connection) submitSASLResult(r saslResult) {
 	}
 }
 
-func splitSaslResponse(raw []byte) (result []string) {
-	// https://ircv3.net/specs/extensions/sasl-3.1#the-authenticate-command
-	// "The response is encoded in Base64 (RFC 4648), then split to 400-byte chunks,
-	// and each chunk is sent as a separate AUTHENTICATE command. Empty (zero-length)
-	// responses are sent as AUTHENTICATE +. If the last chunk was exactly 400 bytes
-	// long, it must also be followed by AUTHENTICATE + to signal end of response."
-
-	if len(raw) == 0 {
-		return []string{"+"}
-	}
-
-	response := base64.StdEncoding.EncodeToString(raw)
-	lastLen := 0
-	for len(response) > 0 {
-		// TODO once we require go 1.21, this can be: lastLen = min(len(response), 400)
-		lastLen = len(response)
-		if lastLen > 400 {
-			lastLen = 400
-		}
-		result = append(result, response[:lastLen])
-		response = response[lastLen:]
-	}
-
-	if lastLen == 400 {
-		result = append(result, "+")
-	}
-
-	return result
-}
-
 func (irc *Connection) composeSaslPlainResponse() []byte {
 	var buf bytes.Buffer
 	buf.WriteString(irc.SASLLogin) // optional authzid, included for compatibility
@@ -73,7 +43,7 @@ func (irc *Connection) setupSASLCallbacks() {
 	irc.AddCallback("AUTHENTICATE", func(e ircmsg.Message) {
 		switch irc.SASLMech {
 		case "PLAIN":
-			for _, resp := range splitSaslResponse(irc.composeSaslPlainResponse()) {
+			for _, resp := range ircutils.EncodeSASLResponse(irc.composeSaslPlainResponse()) {
 				irc.Send("AUTHENTICATE", resp)
 			}
 		case "EXTERNAL":
