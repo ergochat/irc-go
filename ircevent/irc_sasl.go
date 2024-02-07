@@ -1,11 +1,11 @@
 package ircevent
 
 import (
-	"encoding/base64"
+	"bytes"
 	"errors"
-	"fmt"
 
 	"github.com/ergochat/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircutils"
 )
 
 type saslResult struct {
@@ -29,10 +29,28 @@ func (irc *Connection) submitSASLResult(r saslResult) {
 	}
 }
 
+func (irc *Connection) composeSaslPlainResponse() []byte {
+	var buf bytes.Buffer
+	buf.WriteString(irc.SASLLogin) // optional authzid, included for compatibility
+	buf.WriteByte('\x00')
+	buf.WriteString(irc.SASLLogin) // authcid
+	buf.WriteByte('\x00')
+	buf.WriteString(irc.SASLPassword) // passwd
+	return buf.Bytes()
+}
+
 func (irc *Connection) setupSASLCallbacks() {
 	irc.AddCallback("AUTHENTICATE", func(e ircmsg.Message) {
-		str := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s\x00%s\x00%s", irc.SASLLogin, irc.SASLLogin, irc.SASLPassword)))
-		irc.Send("AUTHENTICATE", str)
+		switch irc.SASLMech {
+		case "PLAIN":
+			for _, resp := range ircutils.EncodeSASLResponse(irc.composeSaslPlainResponse()) {
+				irc.Send("AUTHENTICATE", resp)
+			}
+		case "EXTERNAL":
+			irc.Send("AUTHENTICATE", "+")
+		default:
+			// impossible, nothing to do
+		}
 	})
 
 	irc.AddCallback(RPL_LOGGEDOUT, func(e ircmsg.Message) {

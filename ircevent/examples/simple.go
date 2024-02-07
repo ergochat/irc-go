@@ -33,8 +33,17 @@ func main() {
 		UseTLS:       true,
 		TLSConfig:    &tls.Config{InsecureSkipVerify: true},
 		RequestCaps:  []string{"server-time", "message-tags"},
-		SASLLogin:    saslLogin, // SASL will be enabled automatically if these are set
+		SASLLogin:    saslLogin, // SASL PLAIN will be enabled automatically if these are set
 		SASLPassword: saslPassword,
+	}
+
+	if certKeyFile := os.Getenv("IRCEVENT_SASL_CLIENTCERT"); certKeyFile != "" {
+		clientCert, err := tls.LoadX509KeyPair(certKeyFile, certKeyFile)
+		if err != nil {
+			log.Fatalf("could not load client certificate: %v", err)
+		}
+		irc.TLSConfig.Certificates = []tls.Certificate{clientCert}
+		irc.SASLMech = "EXTERNAL" // overrides automatic SASL PLAIN
 	}
 
 	irc.AddConnectCallback(func(e ircmsg.Message) {
