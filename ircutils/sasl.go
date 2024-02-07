@@ -65,8 +65,8 @@ func (b *SASLBuffer) Initialize(maxLength int) {
 }
 
 // Add processes an additional SASL response chunk sent via AUTHENTICATE.
-// If the response is complete, it returns the decoded response along with
-// any decoding or protocol errors detected.
+// If the response is complete, it resets the buffer and returns the decoded
+// response along with any decoding or protocol errors detected.
 func (b *SASLBuffer) Add(value string) (done bool, output []byte, err error) {
 	if value == "+" {
 		output, err = b.getAndReset()
