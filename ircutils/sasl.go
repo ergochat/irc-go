@@ -24,6 +24,7 @@ func EncodeSASLResponse(raw []byte) (result []string) {
 	}
 
 	response := base64.StdEncoding.EncodeToString(raw)
+	result = make([]string, 0, (len(response)/400)+1)
 	lastLen := 0
 	for len(response) > 0 {
 		// TODO once we require go 1.21, this can be: lastLen = min(len(response), 400)
