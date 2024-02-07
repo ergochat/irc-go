@@ -31,7 +31,7 @@ func TestSplitResponse(t *testing.T) {
 }
 
 func TestBuffer(t *testing.T) {
-	b := NewSASLBuffer(1600)
+	b := NewSASLBuffer(1200)
 
 	// less than 400 bytes
 	done, output, err := b.Add("c2hpdmFyYW0Ac2hpdmFyYW0Ac2hpdmFyYW1wYXNzcGhyYXNl")
@@ -58,7 +58,7 @@ func TestBuffer(t *testing.T) {
 	// a single +
 	done, output, err = b.Add("+")
 	assertEqual(done, true)
-	assertEqual(len(output), 0)
+	assertEqual(output, []byte(nil))
 	assertEqual(err, nil)
 
 	// length limit
