@@ -198,7 +198,8 @@ func (irc *Connection) labelNegotiated() bool {
 
 // GetReplyTarget attempts to determine where replies to a PRIVMSG or NOTICE
 // should be sent (a channel if the message was sent to a channel, a nick
-// if the message was a direct message from a valid nickname).
+// if the message was a direct message from a valid nickname). If no valid
+// reply target can be determined, it returns the empty string.
 func (irc *Connection) GetReplyTarget(msg ircmsg.Message) string {
 	switch msg.Command {
 	case "PRIVMSG", "NOTICE", "TAGMSG":
