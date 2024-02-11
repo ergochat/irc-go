@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -193,6 +194,42 @@ func (irc *Connection) batchNegotiated() bool {
 
 func (irc *Connection) labelNegotiated() bool {
 	return atomic.LoadUint32(&irc.capFlags)&capFlagLabeledResponse != 0
+}
+
+// GetReplyTarget attempts to determine where replies to a PRIVMSG or NOTICE
+// should be sent (a channel if the message was sent to a channel, a nick
+// if the message was a direct message from a valid nickname). If no valid
+// reply target can be determined, it returns the empty string.
+func (irc *Connection) GetReplyTarget(msg ircmsg.Message) string {
+	switch msg.Command {
+	case "PRIVMSG", "NOTICE", "TAGMSG":
+		if len(msg.Params) == 0 {
+			return ""
+		}
+		target := msg.Params[0]
+		chanTypes := irc.ISupport()["CHANTYPES"]
+		if chanTypes == "" {
+			chanTypes = "#"
+		}
+		for i := 0; i < len(chanTypes); i++ {
+			if strings.HasPrefix(target, chanTypes[i:i+1]) {
+				return target
+			}
+		}
+		// this was not a channel message: attempt to reply to the source
+		if nuh, err := msg.NUH(); err == nil {
+			if strings.IndexByte(nuh.Name, '.') == -1 {
+				return nuh.Name
+			} else {
+				// this is probably a server name
+				return ""
+			}
+		} else {
+			return ""
+		}
+	default:
+		return ""
+	}
 }
 
 // Deprecated; use (*ircmsg.Message).Nick() instead

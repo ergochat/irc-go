@@ -343,3 +343,35 @@ func TestConnectionCallbacks(t *testing.T) {
 	<-loopExited
 	assertEqual(disconnectCalled, true)
 }
+
+func mustParse(line string) ircmsg.Message {
+	msg, err := ircmsg.ParseLine(line)
+	if err != nil {
+		panic(err)
+	}
+	return msg
+}
+
+func TestGetReplyTarget(t *testing.T) {
+	irc := Connection{}
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG #ergo :hi")), "#ergo")
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG titlebot :hi")), "shivaram")
+	irc.isupport = map[string]string{
+		"CHANTYPES": "#&",
+	}
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG #ergo :hi")), "#ergo")
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG &ergo :hi")), "&ergo")
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG titlebot :hi")), "shivaram")
+	assertEqual(irc.GetReplyTarget(mustParse(":irc.ergo.chat NOTICE titlebot :Server is shutting down")), "")
+
+	// no source but it's a channel message
+	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG #ergo :hi")), "#ergo")
+	// no source but it's a DM (no way to reply)
+	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG titlebot :hi")), "")
+	// invalid messages
+	assertEqual(irc.GetReplyTarget(mustParse(":shivaram!~u@vjsnqp44px9sc.irc PRIVMSG")), "")
+	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG")), "")
+	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG :")), "")
+	// not a PRIVMSG
+	assertEqual(irc.GetReplyTarget(mustParse(":testnet.ergo.chat 371 shivaram :This is Ergo version 2.13.0.")), "")
+}
