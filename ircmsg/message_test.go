@@ -112,12 +112,14 @@ type testparseerror struct {
 
 var decodetesterrors = []testparseerror{
 	{"", ErrorLineIsEmpty},
+	{"\n", ErrorLineIsEmpty},
 	{"\r\n", ErrorLineIsEmpty},
 	{"\r\n    ", ErrorLineContainsBadChar},
 	{"\r\n ", ErrorLineContainsBadChar},
 	{" \r\n", ErrorLineIsEmpty},
 	{" \r\n ", ErrorLineContainsBadChar},
 	{"     \r\n  ", ErrorLineContainsBadChar},
+	{"\xff\r\n", ErrorLineContainsBadChar},
 	{"@tags=tesa\r\n", ErrorLineIsEmpty},
 	{"@tags=tested  \r\n", ErrorLineIsEmpty},
 	{":dan-   \r\n", ErrorLineIsEmpty},
