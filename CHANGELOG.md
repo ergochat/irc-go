@@ -1,6 +1,23 @@
 # Changelog
 All notable changes to irc-go will be documented in this file.
 
+## [0.5.0] - 2026-01-15
+
+irc-go v0.5.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircutils`, our collection of miscellaneous IRC utilities. There are no API breaks relative to previous tagged versions.
+
+### Added
+* Added support for TLS client certificate authentication with `SASL EXTERNAL` (set `(*ircevent.Connection).SASLMech` to `EXTERNAL` and add the client certificate to `(*ircevent.Connection).TLSConfig`) (#102)
+* Added `(*ircevent.Connection).GetReplyTarget`, which determines whether a message was sent to a channel or as a DM and returns the correct target to reply to (#97, #105)
+* Added `ircutils.SASLBuffer`, which handles base64 decoding and concatenation when receiving arbitrarily large SASL responses, up to a configurable limit (#102, #104)
+* Added `ircutils.EncodeSASLResponse`, which handles base64 encoding and chunking when emitting arbitrarily large SASL responses (#102)
+* Exposed `ircevent.ClientHasQuit` error, which is returned when attempting to reconnect after `Quit()` was already called (#99, thanks [@frrad](https://github.com/frrad)!)
+
+### Fixed
+* `ircevent` is now capable of correctly emitting SASL PLAIN responses that exceed 400 bytes of base64 (#102)
+
+### Changed
+* `ircmsg` now validates that the IRC command must be ASCII (#108, #109)
+
 ## [0.4.0] - 2023-06-14
 
 irc-go v0.4.0 is a new tagged release. It incorporates enhancements to `ircmsg`, our IRC protocol handling library, and `ircfmt`, our library for handling [IRC formatting codes](https://modern.ircdocs.horse/formatting.html). There are no API breaks relative to previous tagged versions.
