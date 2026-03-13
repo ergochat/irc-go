@@ -471,11 +471,11 @@ func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 }
 
 func (irc *Connection) handleRegistration(e ircmsg.Message) {
+	becameRegistered := false
 	// wake up Connect() if applicable
 	defer func() {
-		select {
-		case irc.welcomeChan <- empty{}:
-		default:
+		if becameRegistered {
+			close(irc.welcomeChan)
 		}
 	}()
 
@@ -486,6 +486,7 @@ func (irc *Connection) handleRegistration(e ircmsg.Message) {
 		return
 	}
 	irc.registered = true
+	becameRegistered = true
 
 	// mark the isupport complete
 	irc.isupport = irc.isupportPartial
@@ -578,25 +579,10 @@ func (irc *Connection) handleCAP(e ircmsg.Message) {
 }
 
 func (irc *Connection) handleCAPLS(params []string) {
-	var capsToReq, capsNotFound []string
-	defer func() {
-		for _, c := range capsToReq {
-			irc.Send("CAP", "REQ", c)
-		}
-		for _, c := range capsNotFound {
-			select {
-			case irc.capsChan <- capResult{capName: c, ack: false}:
-			default:
-			}
-		}
-	}()
-
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
 
 	if irc.registered {
-		// TODO server could probably trick us into panic here by sending
-		// additional LS before the end of registration
 		return
 	}
 
@@ -608,20 +594,9 @@ func (irc *Connection) handleCAPLS(params []string) {
 	// CAP * LS * :account-notify away-notify [...]
 	// and end with a 3-parameter form:
 	// CAP * LS :userhost-in-names znc.in/playback [...]
-	final := len(params) == 1
 	for _, token := range strings.Fields(params[len(params)-1]) {
 		name, value := splitCAPToken(token)
 		irc.capsAdvertised[name] = value
-	}
-
-	if final {
-		for _, c := range irc.RequestCaps {
-			if _, ok := irc.capsAdvertised[c]; ok {
-				capsToReq = append(capsToReq, c)
-			} else {
-				capsNotFound = append(capsNotFound, c)
-			}
-		}
 	}
 }
 

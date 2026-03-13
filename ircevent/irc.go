@@ -632,6 +632,9 @@ func (irc *Connection) Connect() (err error) {
 		if irc.User == "" {
 			irc.User = irc.Nick
 		}
+		if irc.RealName == "" {
+			irc.RealName = irc.User
+		}
 		if irc.Log == nil {
 			irc.Log = log.New(os.Stdout, "", log.LstdFlags)
 		}
@@ -704,7 +707,7 @@ func (irc *Connection) Connect() (err error) {
 	irc.wg.Add(3)
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
 	irc.saslChan = make(chan saslResult, 1)
-	irc.welcomeChan = make(chan empty, 1)
+	irc.welcomeChan = make(chan empty)
 	irc.registered = false
 	irc.isupportPartial = make(map[string]string)
 	irc.isupport = nil
@@ -730,6 +733,10 @@ func (irc *Connection) Connect() (err error) {
 		}
 	}()
 
+	return irc.performHandshake()
+}
+
+func (irc *Connection) performHandshake() error {
 	if len(irc.WebIRC) > 0 {
 		irc.Send("WEBIRC", irc.WebIRC...)
 	}
@@ -738,93 +745,96 @@ func (irc *Connection) Connect() (err error) {
 		irc.Send("PASS", irc.Password)
 	}
 
-	err = irc.negotiateCaps()
-	if err != nil {
-		return err
-	}
+	remainingCaps := len(irc.RequestCaps)
+	capsRequested := remainingCaps != 0
+	acknowledgedCaps := make([]string, 0, remainingCaps)
 
-	realname := irc.User
-	if irc.RealName != "" {
-		realname = irc.RealName
+	if capsRequested {
+		// get all CAP values if available
+		irc.Send("CAP", "LS", "302")
+		// then blindly request all CAPs we know about
+		for _, capab := range irc.RequestCaps {
+			irc.Send("CAP", "REQ", capab)
+		}
 	}
+	// then send NICK and USER
 	irc.Send("NICK", irc.PreferredNick())
-	irc.Send("USER", irc.User, "s", "e", realname)
-	timeout := time.NewTimer(irc.Timeout)
-	defer timeout.Stop()
-	select {
-	case <-irc.welcomeChan:
-	case <-irc.end:
-		err = ServerDisconnected
-	case <-timeout.C:
-		err = ServerTimedOut
-	}
-	return
-}
+	irc.Send("USER", irc.User, "s", "e", irc.RealName)
 
-// Negotiate IRCv3 capabilities
-func (irc *Connection) negotiateCaps() error {
-	if len(irc.RequestCaps) == 0 {
-		return nil
-	}
+	// Three possibilities:
+	// 1. The server doesn't support CAP or we didn't request any CAPs;
+	// the server will terminate registration with NICK/USER and send 001
+	// 2. The server supports CAPs and will start sending CAP LS / ACK / NAK replies
+	// 3. We time out before getting an intelligible response, so set a timer:
+	timer := time.NewTimer(irc.Timeout)
+	defer timer.Stop()
 
-	var acknowledgedCaps []string
-	defer func() {
-		irc.processAckedCaps(acknowledgedCaps)
-	}()
-
-	irc.Send("CAP", "LS", "302")
-	defer func() {
-		irc.Send("CAP", "END")
-	}()
-
-	remaining_caps := len(irc.RequestCaps)
-
-	timer := time.NewTimer(CAPTimeout)
-	for remaining_caps > 0 {
+CAPLOOP:
+	for {
 		select {
 		case result := <-irc.capsChan:
-			timer.Stop()
-			remaining_caps--
+			remainingCaps--
 			if result.ack {
 				acknowledgedCaps = append(acknowledgedCaps, result.capName)
 			}
+			if remainingCaps <= 0 {
+				break CAPLOOP // got ACK or NAK for all our CAPs
+			}
+		case <-irc.welcomeChan:
+			break CAPLOOP // server does not support CAP
 		case <-timer.C:
-			// The server probably doesn't implement CAP LS, which is "normal".
-			return nil
+			return ServerTimedOut
 		case <-irc.end:
 			return ServerDisconnected
 		}
 	}
 
-	saslError := func(err error) error {
-		if !irc.SASLOptional {
-			return err
-		} else {
-			return nil
-		}
-	}
+	irc.processAckedCaps(acknowledgedCaps)
 
-	if irc.UseSASL {
-		if !sliceContains("sasl", acknowledgedCaps) {
-			return saslError(SASLFailed)
-		} else {
-			irc.Send("AUTHENTICATE", irc.SASLMech)
-		}
-		timeout := time.NewTimer(CAPTimeout)
-		defer timeout.Stop()
+	saslSucceeded := false
+	var saslError error
+
+	if irc.UseSASL && sliceContains("sasl", acknowledgedCaps) {
+		// perform SASL and wait synchronously for the result;
+		// we must wait because on conventional ircd+services stacks,
+		// CAP END will terminate an in-progress SASL session
+		irc.Send("AUTHENTICATE", irc.SASLMech)
+
 		select {
 		case res := <-irc.saslChan:
-			if res.Failed {
-				return saslError(res.Err)
+			saslSucceeded = !res.Failed
+			if !saslSucceeded {
+				saslError = res.Err
 			}
-		case <-timeout.C:
-			// if we expect to be able to SASL, failure to SASL should be treated
-			// as a connection error:
-			return saslError(SASLFailed)
+		case <-timer.C:
+			// technically we could proceed, but our view of the
+			// registration timeout has expired
+			return ServerTimedOut
 		case <-irc.end:
 			return ServerDisconnected
 		}
 	}
 
-	return nil
+	if irc.UseSASL && !irc.SASLOptional && !saslSucceeded {
+		if saslError == nil {
+			saslError = SASLFailed
+		}
+		return saslError
+	}
+
+	// if we did successful CAP negotiation with the server
+	// then we need CAP END to terminate registration
+	if capsRequested && remainingCaps <= 0 {
+		irc.Send("CAP", "END")
+	}
+
+	// wait for registration to complete, or fail
+	select {
+	case <-irc.welcomeChan:
+		return nil
+	case <-timer.C:
+		return ServerTimedOut
+	case <-irc.end:
+		return ServerDisconnected
+	}
 }

@@ -344,6 +344,87 @@ func TestConnectionCallbacks(t *testing.T) {
 	assertEqual(disconnectCalled, true)
 }
 
+func TestCAPHandling(t *testing.T) {
+	var testCases = []struct {
+		name   string
+		caps   []string
+		result []string
+	}{
+		{
+			name:   "no caps",
+			caps:   nil,
+			result: nil,
+		},
+		{
+			name:   "one invalid cap",
+			caps:   []string{"ergo.chat/nonexistent"},
+			result: nil,
+		},
+		{
+			name:   "one valid cap",
+			caps:   []string{"message-tags"},
+			result: []string{"message-tags"},
+		},
+		{
+			name:   "one valid cap, one invalid",
+			caps:   []string{"ergo.chat/nonexistent", "message-tags"},
+			result: []string{"message-tags"},
+		},
+		{
+			name:   "multiple caps, one invalid",
+			caps:   []string{"server-time", "batch", "echo-message", "labeled-response", "account-tag", "ergo.chat/nonexistent", "message-tags"},
+			result: []string{"account-tag", "batch", "echo-message", "labeled-response", "message-tags", "server-time"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rand.Seed(time.Now().UnixNano())
+			ircnick := randStr(8)
+			irccon1 := connForTesting(ircnick, "IRCTest1", false)
+			irccon1.RequestCaps = tc.caps
+			debugTest(irccon1)
+			resultChan := make(chan map[string]string, 1)
+			disconnectCalled := false
+			irccon1.AddConnectCallback(func(e ircmsg.Message) {
+				resultChan <- irccon1.ISupport()
+			})
+			irccon1.AddDisconnectCallback(func(e ircmsg.Message) {
+				disconnectCalled = true
+			})
+			err := irccon1.Connect()
+			if err != nil {
+				panic(err)
+			}
+			loopExited := make(chan empty)
+			go func() {
+				irccon1.Loop()
+				close(loopExited)
+			}()
+			<-resultChan
+			// should successfully req message-tags, ignoring the nonexistent cap
+			capsAcked := sortAckedCaps(irccon1.capsAcked)
+			assertEqual(capsAcked, tc.result)
+			assertEqual(disconnectCalled, false)
+			irccon1.Quit()
+			<-loopExited
+			assertEqual(disconnectCalled, true)
+		})
+	}
+}
+
+func sortAckedCaps(caps map[string]string) (result []string) {
+	if len(caps) == 0 {
+		return nil
+	}
+	result = make([]string, 0, len(caps))
+	for c := range caps {
+		result = append(result, c)
+	}
+	sort.Strings(result)
+	return result
+}
+
 func mustParse(line string) ircmsg.Message {
 	msg, err := ircmsg.ParseLine(line)
 	if err != nil {
