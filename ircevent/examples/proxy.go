@@ -24,7 +24,7 @@ func getenv(key, defaultValue string) (value string) {
 
 func main() {
 	nick := getenv("IRCEVENT_NICK", "robot")
-	server := getenv("IRCEVENT_SERVER", "testnet.oragono.io:6697")
+	server := getenv("IRCEVENT_SERVER", "testnet.ergo.chat:6697")
 	channel := getenv("IRCEVENT_CHANNEL", "#ircevent-test")
 	saslLogin := os.Getenv("IRCEVENT_SASL_LOGIN")
 	saslPassword := os.Getenv("IRCEVENT_SASL_PASSWORD")
