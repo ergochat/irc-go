@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to irc-go will be documented in this file.
 
+## [0.6.0] - 2026-03-15
+
+irc-go v0.6.0 is a new tagged release. It includes a bug fix to `ircevent`, our IRC client library. There are no API breaks relative to previous tagged versions.
+
+### Fixed
+* `ircevent` now sends `NICK` and `USER` without waiting for `CAP` responses. This improves compliance with the [specification](https://ircv3.net/specs/extensions/capability-negotiation.html), speeds up connecting to legacy servers, and may improve compatibility with some servers. (#111, #112, thanks [@Yahweasel](https://github.com/Yahweasel)!)
+
 ## [0.5.0] - 2026-01-15
 
 irc-go v0.5.0 is a new tagged release. It incorporates enhancements to `ircevent`, our IRC client library, and `ircutils`, our collection of miscellaneous IRC utilities. There are no API breaks relative to previous tagged versions.
