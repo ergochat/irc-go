@@ -423,6 +423,10 @@ func (irc *Connection) setupCallbacks() {
 	// Set irc.currentNick to the actually used nick in this connection.
 	irc.AddCallback(RPL_WELCOME, irc.handleRplWelcome)
 
+	// 302: RPL_USERHOST "bubbles=+~u@un4ncby3zwhc4.irc"
+	// Set irc.userHost to the returned value for our nick
+	irc.AddCallback(RPL_USERHOST, irc.handleRplUserhost)
+
 	// 005: RPL_ISUPPORT, conveys supported server features
 	irc.AddCallback(RPL_ISUPPORT, irc.handleISupport)
 
@@ -467,6 +471,31 @@ func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 	// set the nickname we actually received from the server
 	if len(e.Params) > 0 {
 		irc.currentNick = e.Params[0]
+	}
+}
+
+// If irc.userHost is unset
+// - Parse RPL_USERHOST messages for our nick
+// - Set irc.userHost
+func (irc *Connection) handleRplUserhost(e ircmsg.Message) {
+	if irc.userHost != "" {
+		return
+	}
+	if len(e.Params) != 2 {
+		return
+	}
+	userHostNicks := strings.Split(e.Params[1], " ")
+	if len(userHostNicks) != 1 {
+		return
+	}
+	userHost, foundNick := strings.CutPrefix(
+		userHostNicks[0],
+		fmt.Sprintf("%s=", irc.CurrentNick()),
+	)
+	if foundNick {
+		irc.stateMutex.Lock()
+		defer irc.stateMutex.Unlock()
+		irc.userHost = userHost
 	}
 }
 

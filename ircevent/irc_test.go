@@ -89,6 +89,42 @@ func TestIRCemptyNick(t *testing.T) {
 	}
 }
 
+func TestIRCMaxMsgByteLen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	ircnick1 := randStr(8)
+	irccon := connForTesting(ircnick1, "go-eventirc", false)
+	err := irccon.Connect()
+	if err != nil {
+		t.Log(err.Error())
+		t.Errorf("Can't connect to freenode.")
+	}
+	debugTest(irccon)
+	maxMsgByteLen := irccon.MaxMsgByteLen("PRIVMSG", ircnick1)
+	msg := randStr(maxMsgByteLen)
+	irccon.AddCallback(ERR_INPUTTOOLONG, func(e ircmsg.Message) {
+		if e.Params[0] == ircnick1 {
+			t.Errorf("ERR_INPUTTOOLONG: %v", e.Params[1])
+		}
+	})
+	var rcvdMsg string
+	irccon.AddCallback("PRIVMSG", func(e ircmsg.Message) {
+		if e.Nick() == ircnick1 {
+			rcvdMsg = e.Params[1]
+		}
+	})
+	err = irccon.Privmsg(ircnick1, msg)
+	if err != nil {
+		t.Errorf("Unable to send privmsg: %v", err)
+	}
+	// Wait for ERR_INPUTTOOLONG and PRIVMSG callbacks to pop
+	time.Sleep(100 * time.Millisecond)
+	if msg != rcvdMsg {
+		t.Errorf("Messages do not match: sent: '%v', received: '%v'", msg, rcvdMsg)
+	}
+}
+
 func TestConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")

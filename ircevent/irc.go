@@ -501,6 +501,42 @@ func (irc *Connection) CurrentNick() string {
 	return irc.currentNick
 }
 
+// Calculate the max message size based on the premable byte length
+//
+// This may be used to ensure sent messages do not exceed the IRC 512 byte
+// limit.
+func (irc *Connection) MaxMsgByteLen(command, target string) int {
+	nick := irc.CurrentNick()
+	var userHost string
+	if irc.userHost != "" {
+		userHost = strings.TrimLeft(irc.userHost, "+-")
+	} else {
+		// Max length defaults, they are used if we can't get the values from
+		// ISUPPORT
+		hostLen := 63
+		userLen := 20
+		if userLenStr := irc.ISupport()["USERLEN"]; userLenStr != "" {
+			iSupportUserLen, err := strconv.Atoi(userLenStr)
+			if err == nil {
+				userLen = iSupportUserLen
+			}
+		}
+		if hostLenStr := irc.ISupport()["HOSTLEN"]; hostLenStr != "" {
+			iSupportHostLen, err := strconv.Atoi(hostLenStr)
+			if err == nil {
+				hostLen = iSupportHostLen
+			}
+		}
+		userHost = fmt.Sprintf(
+			"%s@%s",
+			strings.Repeat("A", userLen),
+			strings.Repeat("A", hostLen),
+		)
+	}
+	preamble := fmt.Sprintf(":%s!%s %s %s :\r\n", nick, userHost, command, target)
+	return 512 - len(preamble)
+}
+
 // Returns the expected or desired nickname for the connection;
 // if the real nickname is different, the client will periodically
 // attempt to change to this one.
@@ -831,6 +867,9 @@ CAPLOOP:
 	// wait for registration to complete, or fail
 	select {
 	case <-irc.welcomeChan:
+		// Send a USERHOST query so we can populate irc.userHost and use its
+		// value to accurately determine the MaxMsgByteLen()
+		irc.Send("USERHOST", irc.CurrentNick())
 		return nil
 	case <-timer.C:
 		return ServerTimedOut
