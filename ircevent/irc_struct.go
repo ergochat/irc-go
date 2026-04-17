@@ -83,10 +83,8 @@ type Connection struct {
 	pingSent   bool      // we sent PING and are waiting for PONG
 
 	// IRC protocol connection state
-	currentNick string // nickname assigned by the server, empty before registration
-	// userhost assigned by the server, empty before a USERHOST reply for our
-	// nick is recevied by irc.handleRplUserhost
-	userHost        string
+	currentNick     string // nickname assigned by the server, empty before registration
+	userHost        string // user@host assigned by the server, empty until RPL_USERHOST
 	capsAdvertised  map[string]string
 	capsAcked       map[string]string
 	isupport        map[string]string

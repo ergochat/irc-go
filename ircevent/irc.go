@@ -501,40 +501,43 @@ func (irc *Connection) CurrentNick() string {
 	return irc.currentNick
 }
 
-// Calculate the max message size based on the premable byte length
-//
+func (irc *Connection) getUserHost() string {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.userHost
+}
+
+// Calculate the max message size for PRIVMSG or NOTICE, after accounting
+// for protocol overhead incurred when the server relays the message.
 // This may be used to ensure sent messages do not exceed the IRC 512 byte
-// limit.
-func (irc *Connection) MaxMsgByteLen(command, target string) int {
+// limit (which would cause them to either be truncated or rejected by the
+// ircd). Note that this value is not a strict guarantee because the server
+// can change the client's NUH unilaterally at any time; implementations may
+// wish to use a more conservative constant maximum instead.
+func (irc *Connection) MaxMsgByteLen(target string) int {
 	nick := irc.CurrentNick()
-	var userHost string
-	if irc.userHost != "" {
-		userHost = strings.TrimLeft(irc.userHost, "+-")
+	userhost := irc.getUserHost()
+	var userhostLen int
+	if userhost != "" {
+		userhostLen = len(userhost)
 	} else {
-		// Max length defaults, they are used if we can't get the values from
-		// ISUPPORT
-		hostLen := 63
-		userLen := 20
-		if userLenStr := irc.ISupport()["USERLEN"]; userLenStr != "" {
-			iSupportUserLen, err := strconv.Atoi(userLenStr)
-			if err == nil {
-				userLen = iSupportUserLen
-			}
-		}
-		if hostLenStr := irc.ISupport()["HOSTLEN"]; hostLenStr != "" {
-			iSupportHostLen, err := strconv.Atoi(hostLenStr)
-			if err == nil {
-				hostLen = iSupportHostLen
-			}
-		}
-		userHost = fmt.Sprintf(
-			"%s@%s",
-			strings.Repeat("A", userLen),
-			strings.Repeat("A", hostLen),
-		)
+		userhostLen = 96 // sane default
 	}
-	preamble := fmt.Sprintf(":%s!%s %s %s :\r\n", nick, userHost, command, target)
-	return 512 - len(preamble)
+
+	// :nick!user@host PRIVMSG #target :payload\r\n
+	result := 512
+	result -= 1 // :
+	result -= len(nick)
+	result -= 1 // !
+	result -= userhostLen
+	result -= 1 // space
+	result -= 7 // PRIVMSG
+	result -= 1 // space
+	result -= len(target)
+	result -= 2 // space after target, : for trailing
+	// payload goes here
+	result -= 2 // \r\n
+	return result
 }
 
 // Returns the expected or desired nickname for the connection;
@@ -656,6 +659,7 @@ func (irc *Connection) Connect() (err error) {
 		irc.running = false
 		irc.socket = nil
 		irc.currentNick = ""
+		irc.userHost = ""
 		irc.lastError = nil
 		irc.pingSent = false
 
@@ -867,9 +871,6 @@ CAPLOOP:
 	// wait for registration to complete, or fail
 	select {
 	case <-irc.welcomeChan:
-		// Send a USERHOST query so we can populate irc.userHost and use its
-		// value to accurately determine the MaxMsgByteLen()
-		irc.Send("USERHOST", irc.CurrentNick())
 		return nil
 	case <-timer.C:
 		return ServerTimedOut

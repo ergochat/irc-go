@@ -474,29 +474,37 @@ func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 	}
 }
 
-// If irc.userHost is unset
-// - Parse RPL_USERHOST messages for our nick
-// - Set irc.userHost
 func (irc *Connection) handleRplUserhost(e ircmsg.Message) {
-	if irc.userHost != "" {
-		return
-	}
 	if len(e.Params) != 2 {
 		return
 	}
-	userHostNicks := strings.Split(e.Params[1], " ")
-	if len(userHostNicks) != 1 {
+	// "The last parameter of this numeric (if there are any results) is a
+	// list of <reply> values, delimited by a SPACE character (' ', 0x20)."
+	param := e.Params[1]
+	if strings.IndexByte(param, ' ') != -1 {
 		return
 	}
-	userHost, foundNick := strings.CutPrefix(
-		userHostNicks[0],
-		fmt.Sprintf("%s=", irc.CurrentNick()),
-	)
-	if foundNick {
-		irc.stateMutex.Lock()
-		defer irc.stateMutex.Unlock()
-		irc.userHost = userHost
+	currentNick := irc.CurrentNick()
+	if currentNick == "" {
+		return
 	}
+	param, foundNick := strings.CutPrefix(param, currentNick)
+	if !foundNick {
+		return
+	}
+	// remove * if present:
+	// "<isop> is included if the user with the nickname of <nickname>
+	// has registered as an operator."
+	if len(param) != 0 && param[0] == '*' {
+		param = param[1:]
+	}
+	// "=", then either '+' or '-' indicating away status, then user@host
+	if len(param) < 3 || param[0] != '=' {
+		return
+	}
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.userHost = param[2:]
 }
 
 func (irc *Connection) handleRegistration(e ircmsg.Message) {
@@ -505,6 +513,14 @@ func (irc *Connection) handleRegistration(e ircmsg.Message) {
 	defer func() {
 		if becameRegistered {
 			close(irc.welcomeChan)
+		}
+	}()
+
+	var currentNick string
+	sendUserhost := false
+	defer func() {
+		if becameRegistered && sendUserhost {
+			irc.Send("USERHOST", currentNick)
 		}
 	}()
 
@@ -521,6 +537,8 @@ func (irc *Connection) handleRegistration(e ircmsg.Message) {
 	irc.isupport = irc.isupportPartial
 	irc.isupportPartial = nil
 
+	currentNick = irc.currentNick
+	sendUserhost = irc.userHost == ""
 }
 
 func (irc *Connection) handleUnavailableNick(e ircmsg.Message) {
