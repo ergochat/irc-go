@@ -93,10 +93,11 @@ func TestIRCMaxMsgByteLen(t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "go-eventirc", false)
 	debugTest(irccon)
+	irccon.FetchUserHost = true
 	gotUserhost := make(chan struct{})
 	done := make(chan struct{})
-	irccon.AddCallback(RPL_USERHOST, func(e ircmsg.Message) {
-		// hack for synchronization, wait until RPL_USERHOST was received and processed
+	irccon.AddCallback(RPL_WHOREPLY, func(e ircmsg.Message) {
+		// hack for synchronization, wait until RPL_WHOREPLY was received and processed
 		// (otherwise we're just testing the fallback value)
 		close(gotUserhost)
 	})

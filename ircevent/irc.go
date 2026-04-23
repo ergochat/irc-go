@@ -501,10 +501,27 @@ func (irc *Connection) CurrentNick() string {
 	return irc.currentNick
 }
 
-func (irc *Connection) getUserHost() string {
+func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
+	requestUserhost := false
+	defer func() {
+		if requestUserhost {
+			// legacy fallback for learning the userhost
+			irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
+			irc.Send("WHO", currentNick)
+		}
+	}()
+
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
-	return irc.userHost
+
+	// query for the userhost if this is the first time we were asked about it
+	// and we don't already have it
+	if irc.userHost == "" && !irc.userHostRequested {
+		requestUserhost = true
+		irc.userHostRequested = true
+	}
+
+	return irc.currentNick, irc.userHost
 }
 
 // Calculate the max message size for PRIVMSG or NOTICE, after accounting
@@ -515,11 +532,10 @@ func (irc *Connection) getUserHost() string {
 // can change the client's NUH unilaterally at any time; implementations may
 // wish to use a more conservative constant maximum instead.
 func (irc *Connection) MaxMsgByteLen(target string) int {
-	nick := irc.CurrentNick()
-	userhost := irc.getUserHost()
+	nick, userHost := irc.getOrRequestUserHost()
 	var userhostLen int
-	if userhost != "" {
-		userhostLen = len(userhost)
+	if userHost != "" {
+		userhostLen = len(userHost)
 	} else {
 		userhostLen = 96 // sane default
 	}
@@ -660,6 +676,7 @@ func (irc *Connection) Connect() (err error) {
 		irc.socket = nil
 		irc.currentNick = ""
 		irc.userHost = ""
+		irc.userHostRequested = false
 		irc.lastError = nil
 		irc.pingSent = false
 
