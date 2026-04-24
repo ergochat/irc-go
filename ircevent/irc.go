@@ -716,6 +716,12 @@ func (irc *Connection) Connect() (err error) {
 				irc.RequestCaps = append(irc.RequestCaps, "sasl")
 			}
 		}
+		if irc.FetchUserHost {
+			// ensure 'chghost' is in the cap list if necessary
+			if !sliceContains("chghost", irc.RequestCaps) {
+				irc.RequestCaps = append(irc.RequestCaps, "chghost")
+			}
+		}
 		if irc.SASLMech == "" {
 			irc.SASLMech = "PLAIN"
 		}
