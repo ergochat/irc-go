@@ -481,16 +481,14 @@ func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 }
 
 func (irc *Connection) handleSetname(e ircmsg.Message) {
-	// SETNAME always refers to the recipient:
-	// nick!user@host SETNAME :real name
-	var userHost string
-	if idx := strings.IndexByte(e.Source, '!'); idx != -1 {
-		userHost = e.Source[idx+1:]
-	}
-
-	if userHost == "" {
+	nuh, err := ircmsg.ParseNUH(e.Source)
+	if err != nil {
 		return
 	}
+	if nuh.Name == "" || nuh.Name != irc.CurrentNick() || nuh.User == "" || nuh.Host == "" {
+		return
+	}
+	userHost := e.Source[len(nuh.Name)+1:]
 
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
@@ -503,14 +501,14 @@ func (irc *Connection) handleChghost(e ircmsg.Message) {
 	if len(e.Params) < 2 {
 		return
 	}
-	currentNick := irc.CurrentNick()
-	if !strings.HasPrefix(e.Source, currentNick) {
+	nuh, err := ircmsg.ParseNUH(e.Source)
+	if err != nil {
 		return
 	}
-	if len(currentNick) == len(e.Source) || e.Source[len(currentNick)] != '!' {
+	if nuh.Name == "" || nuh.Name != irc.CurrentNick() || nuh.User == "" || nuh.Host == "" {
 		return
 	}
-	// ok, this is exactly our nick
+	// ok, this refers to us
 	userHost := fmt.Sprintf("%s@%s", e.Params[0], e.Params[1])
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
