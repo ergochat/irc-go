@@ -66,6 +66,7 @@ type Connection struct {
 	Debug           bool
 	AllowPanic      bool // if set, don't recover() from panics in callbacks
 	AllowTruncation bool // if set, truncate lines exceeding MaxLineLen and send them
+	FetchUserHost   bool // if set, attempt to retrieve userhost on connect so that MaxMsgByteLen works
 	// set this to configure how the connection is made (e.g. via a proxy server):
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
@@ -83,13 +84,15 @@ type Connection struct {
 	pingSent   bool      // we sent PING and are waiting for PONG
 
 	// IRC protocol connection state
-	currentNick     string // nickname assigned by the server, empty before registration
-	capsAdvertised  map[string]string
-	capsAcked       map[string]string
-	isupport        map[string]string
-	isupportPartial map[string]string
-	nickCounter     int
-	registered      bool
+	currentNick       string // nickname assigned by the server, empty before registration
+	userHost          string // user@host assigned by the server, empty until RPL_USERHOST
+	capsAdvertised    map[string]string
+	capsAcked         map[string]string
+	isupport          map[string]string
+	isupportPartial   map[string]string
+	nickCounter       int
+	registered        bool
+	userHostRequested bool
 	// Connect() builds these with sufficient capacity to receive all expected
 	// responses during negotiation. Sends to them are nonblocking, so anything
 	// sent outside of negotiation will not cause the relevant callbacks to block.

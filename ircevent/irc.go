@@ -501,6 +501,61 @@ func (irc *Connection) CurrentNick() string {
 	return irc.currentNick
 }
 
+func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
+	requestUserhost := false
+	defer func() {
+		if requestUserhost {
+			// legacy fallback for learning the userhost
+			irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
+			irc.Send("WHO", currentNick)
+		}
+	}()
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	// query for the userhost if this is the first time we were asked about it
+	// and we don't already have it
+	if irc.userHost == "" && !irc.userHostRequested {
+		requestUserhost = true
+		irc.userHostRequested = true
+	}
+
+	return irc.currentNick, irc.userHost
+}
+
+// Calculate the max message size for PRIVMSG or NOTICE, after accounting
+// for protocol overhead incurred when the server relays the message.
+// This may be used to ensure sent messages do not exceed the IRC 512 byte
+// limit (which would cause them to either be truncated or rejected by the
+// ircd). Note that this value is not a strict guarantee because the server
+// can change the client's NUH unilaterally at any time; implementations may
+// wish to use a more conservative constant maximum instead.
+func (irc *Connection) MaxMsgByteLen(target string) int {
+	nick, userHost := irc.getOrRequestUserHost()
+	var userhostLen int
+	if userHost != "" {
+		userhostLen = len(userHost)
+	} else {
+		userhostLen = 96 // sane default
+	}
+
+	// :nick!user@host PRIVMSG #target :payload\r\n
+	result := 512
+	result -= 1 // :
+	result -= len(nick)
+	result -= 1 // !
+	result -= userhostLen
+	result -= 1 // space
+	result -= 7 // PRIVMSG
+	result -= 1 // space
+	result -= len(target)
+	result -= 2 // space after target, : for trailing
+	// payload goes here
+	result -= 2 // \r\n
+	return result
+}
+
 // Returns the expected or desired nickname for the connection;
 // if the real nickname is different, the client will periodically
 // attempt to change to this one.
@@ -620,6 +675,8 @@ func (irc *Connection) Connect() (err error) {
 		irc.running = false
 		irc.socket = nil
 		irc.currentNick = ""
+		irc.userHost = ""
+		irc.userHostRequested = false
 		irc.lastError = nil
 		irc.pingSent = false
 
@@ -657,6 +714,12 @@ func (irc *Connection) Connect() (err error) {
 			// ensure 'sasl' is in the cap list if necessary
 			if !sliceContains("sasl", irc.RequestCaps) {
 				irc.RequestCaps = append(irc.RequestCaps, "sasl")
+			}
+		}
+		if irc.FetchUserHost {
+			// ensure 'chghost' is in the cap list if necessary
+			if !sliceContains("chghost", irc.RequestCaps) {
+				irc.RequestCaps = append(irc.RequestCaps, "chghost")
 			}
 		}
 		if irc.SASLMech == "" {

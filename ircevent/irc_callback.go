@@ -458,6 +458,16 @@ func (irc *Connection) setupCallbacks() {
 	irc.AddCallback("FAIL", irc.handleStandardReplies)
 	irc.AddCallback("WARN", irc.handleStandardReplies)
 	irc.AddCallback("NOTE", irc.handleStandardReplies)
+
+	// extensions for learning the user/host
+	irc.AddCallback("CHGHOST", irc.handleChghost)
+	irc.AddCallback("SETNAME", irc.handleSetname)
+
+	if irc.FetchUserHost {
+		irc.AddConnectCallback(func(_ ircmsg.Message) {
+			irc.getOrRequestUserHost()
+		})
+	}
 }
 
 func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
@@ -468,6 +478,56 @@ func (irc *Connection) handleRplWelcome(e ircmsg.Message) {
 	if len(e.Params) > 0 {
 		irc.currentNick = e.Params[0]
 	}
+}
+
+func (irc *Connection) handleSetname(e ircmsg.Message) {
+	nuh, err := ircmsg.ParseNUH(e.Source)
+	if err != nil {
+		return
+	}
+	if nuh.Name == "" || nuh.Name != irc.CurrentNick() || nuh.User == "" || nuh.Host == "" {
+		return
+	}
+	userHost := e.Source[len(nuh.Name)+1:]
+
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.userHost = userHost
+}
+
+func (irc *Connection) handleChghost(e ircmsg.Message) {
+	// CHGHOST can refer to anyone:
+	// origNick!origUser@origHost CHGHOST newUser newHost
+	if len(e.Params) < 2 {
+		return
+	}
+	nuh, err := ircmsg.ParseNUH(e.Source)
+	if err != nil {
+		return
+	}
+	if nuh.Name == "" || nuh.Name != irc.CurrentNick() || nuh.User == "" || nuh.Host == "" {
+		return
+	}
+	// ok, this refers to us
+	userHost := fmt.Sprintf("%s@%s", e.Params[0], e.Params[1])
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.userHost = userHost
+}
+
+func (irc *Connection) handleRplWhoReply(e ircmsg.Message) {
+	// 352 RPL_WHOREPLY, which we use to determine the client's own userhost:
+	// "<client> <channel> <username> <host> <server> <nick> <flags> :<hopcount> <realname>"
+	if len(e.Params) != 8 {
+		return
+	}
+	if e.Params[5] != irc.CurrentNick() {
+		return
+	}
+	userHost := fmt.Sprintf("%s@%s", e.Params[2], e.Params[3])
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	irc.userHost = userHost
 }
 
 func (irc *Connection) handleRegistration(e ircmsg.Message) {
@@ -491,7 +551,6 @@ func (irc *Connection) handleRegistration(e ircmsg.Message) {
 	// mark the isupport complete
 	irc.isupport = irc.isupportPartial
 	irc.isupportPartial = nil
-
 }
 
 func (irc *Connection) handleUnavailableNick(e ircmsg.Message) {

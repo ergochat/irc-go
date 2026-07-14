@@ -89,10 +89,69 @@ func TestIRCemptyNick(t *testing.T) {
 	}
 }
 
-func TestConnection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
+func TestIRCMaxMsgByteLen(t *testing.T) {
+	ircnick1 := randStr(8)
+	irccon := connForTesting(ircnick1, "go-eventirc", false)
+	debugTest(irccon)
+	irccon.FetchUserHost = true
+	gotUserhost := make(chan struct{})
+	done := make(chan struct{})
+	irccon.AddCallback(RPL_WHOREPLY, func(e ircmsg.Message) {
+		// hack for synchronization, wait until RPL_WHOREPLY was received and processed
+		// (otherwise we're just testing the fallback value)
+		close(gotUserhost)
+	})
+	expectedFail := false
+	irccon.AddCallback(ERR_INPUTTOOLONG, func(e ircmsg.Message) {
+		if e.Params[0] == ircnick1 {
+			if !expectedFail {
+				t.Errorf("ERR_INPUTTOOLONG: %v", e.Params[1])
+			}
+			done <- struct{}{}
+		}
+	})
+	var rcvdMsg string
+	irccon.AddCallback("PRIVMSG", func(e ircmsg.Message) {
+		if e.Nick() == ircnick1 {
+			rcvdMsg = e.Params[1]
+			done <- struct{}{}
+		}
+	})
+	err := irccon.Connect()
+	if err != nil {
+		t.Log(err.Error())
+		t.Errorf("Can't connect to testing ircd.")
 	}
+	<-gotUserhost
+	// now MaxMsgByteLen should return the real upper bound
+	maxMsgByteLen := irccon.MaxMsgByteLen(ircnick1)
+	msg := randStr(maxMsgByteLen)
+	err = irccon.Privmsg(ircnick1, msg)
+	if err != nil {
+		t.Errorf("Unable to send privmsg: %v", err)
+	}
+	<-done
+	if msg != rcvdMsg {
+		t.Errorf("Messages do not match: sent: '%v', received: '%v'", msg, rcvdMsg)
+	}
+
+	// test that the bound is sharp by adding one byte to the message
+	expectedFail = true
+	msg += "!"
+	rcvdMsg = ""
+	err = irccon.Privmsg(ircnick1, msg)
+	if err != nil {
+		t.Errorf("Unable to send privmsg: %v", err)
+	}
+	<-done
+	// message should either be relayed with truncation, or rejected,
+	// depending on implementation
+	if msg == rcvdMsg {
+		t.Errorf("Successfully relayed message over MaxMsgByteLen() bytes: %d", len(msg))
+	}
+}
+
+func TestConnection(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	ircnick1 := randStr(8)
 	ircnick2 := randStr(8)
