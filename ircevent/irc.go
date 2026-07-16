@@ -137,6 +137,7 @@ func (irc *Connection) readLoop() {
 			} else {
 				irc.Log.Printf("invalid message from server: %v\n", err)
 			}
+			irc.runRawCallbacks(msg, parsedMsg, err)
 		case err := <-errChan:
 			irc.setError(err)
 			return
