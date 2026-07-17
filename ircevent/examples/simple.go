@@ -20,6 +20,8 @@ func getenv(key, defaultValue string) (value string) {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	nick := getenv("IRCEVENT_NICK", "robot")
 	server := getenv("IRCEVENT_SERVER", "testnet.ergo.chat:6697")
 	channel := getenv("IRCEVENT_CHANNEL", "#ircevent-test")
@@ -35,6 +37,7 @@ func main() {
 		RequestCaps:  []string{"server-time", "message-tags"},
 		SASLLogin:    saslLogin, // SASL PLAIN will be enabled automatically if these are set
 		SASLPassword: saslPassword,
+		Log:          log.Default(),
 	}
 
 	if certKeyFile := os.Getenv("IRCEVENT_SASL_CLIENTCERT"); certKeyFile != "" {

@@ -40,6 +40,17 @@ type capResult struct {
 	ack     bool
 }
 
+type ConnectionState uint
+
+const (
+	ConnectionNotStarted ConnectionState = iota
+	ConnectionConnecting
+	ConnectionActive
+	ConnectionSleeping
+	ConnectionStopping
+	ConnectionStopped
+)
+
 type Connection struct {
 	// config data, user-settable
 	Server          string
@@ -70,18 +81,23 @@ type Connection struct {
 	// set this to configure how the connection is made (e.g. via a proxy server):
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
+	normalizeOnce sync.Once
+	normalizeErr  error
+
 	// networking and synchronization
-	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
-	end        chan empty     // closing this causes the goroutines to exit
-	pwrite     chan []byte    // receives IRC lines to be sent to the socket
-	reconnSig  chan empty     // interrupts sleep in between reconnects (#79)
-	wg         sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
-	socket     net.Conn
-	lastError  error
-	quitAt     time.Time // time Quit() was called
-	running    bool      // is a connection active? is `end` open?
-	quit       bool      // user called Quit, do not reconnect
-	pingSent   bool      // we sent PING and are waiting for PONG
+	stateMutex      sync.Mutex // innermost mutex: don't block while holding this
+	connectionState ConnectionState
+	endClosed       bool
+	end             chan empty     // closing this causes the goroutines to exit
+	pwrite          chan []byte    // receives IRC lines to be sent to the socket
+	wg              sync.WaitGroup // after closing end, wait on this for all the goroutines to stop
+	socket          net.Conn
+	lastError       error
+	quitAt          time.Time  // time Quit() was called
+	reconnSig       chan empty // interrupts sleep in between reconnects (#79)
+	quitEvent       chan empty // wait for final stop
+	running         bool       // is a connection active? is `end` open?
+	pingSent        bool       // we sent PING and are waiting for PONG
 
 	// IRC protocol connection state
 	currentNick       string // nickname assigned by the server, empty before registration
@@ -109,8 +125,7 @@ type Connection struct {
 	// if we add a callback in two places we might reuse the number (XXX)
 	callbackCounter uint64
 	// did we initialize the callbacks needed for the library itself?
-	batchCallbacks   []batchCallbackPair
-	hasBaseCallbacks bool
+	batchCallbacks []batchCallbackPair
 
 	batchMutex     sync.Mutex
 	batches        map[string]batchInProgress
