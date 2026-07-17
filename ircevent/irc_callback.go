@@ -156,7 +156,8 @@ func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
 
 // AddRawCallback adds a callback that will be invoked for every IRC line
 // sent from the server, including lines that fail to parse. Raw callbacks
-// are executed after normal callbacks. The first argument to the callback
+// are executed after normal callbacks, but before batch callbacks (since
+// they do not respect batch buffering). The first argument to the callback
 // is the original IRC line as a string, without the terminating \r\n.
 // If the line is valid, the second argument is the parsed ircmsg.Message
 // and the third argument is nil; if it is invalid, the second argument has
