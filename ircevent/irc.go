@@ -438,6 +438,87 @@ func (irc *Connection) SendRaw(message string) error {
 	return irc.sendInternal(buf)
 }
 
+// SendBatch sends a group of messages as an IRCv3 client batch, adding
+// BATCH start and end messages and an appropriate batch tag.
+func (irc *Connection) SendBatch(msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) error {
+	combinedMsg, err := irc.composeClientBatch("", msgs, nil, batchType, batchParams...)
+	if err != nil {
+		return err
+	}
+	return irc.sendInternal(combinedMsg)
+}
+
+// SendBatchWithLabel sends a group of messages as an IRCv3 client batch,
+// additionally using the IRCv3 labeled-response specification to collect
+// the response.
+func (irc *Connection) SendBatchWithLabel(callback func(*Batch), msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (err error) {
+	label := irc.registerLabel(callback)
+	defer func() {
+		if err != nil {
+			irc.unregisterLabel(label)
+		}
+	}()
+
+	combinedMsg, err := irc.composeClientBatch(label, msgs, tags, batchType, batchParams...)
+	if err != nil {
+		return err
+	}
+
+	return irc.sendInternal(combinedMsg)
+}
+
+// GetLabeledResponseForBatch sends a group of messages as an IRCv3 client batch,
+// using the IRCv3 labeled-response specification, then synchronously waits for
+// the response.
+func (irc *Connection) GetLabeledResponseForBatch(msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (batch *Batch, err error) {
+	done := make(chan empty)
+	err = irc.SendBatchWithLabel(func(b *Batch) {
+		batch = b
+		close(done)
+	}, msgs, tags, batchType, batchParams...)
+	if err != nil {
+		return
+	}
+	<-done
+	if batch == nil {
+		err = NoLabeledResponse
+	}
+	return
+}
+
+func (irc *Connection) composeClientBatch(label string, msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (result []byte, err error) {
+	var buf bytes.Buffer
+	// only one client batch can be in flight at a time,
+	// so we can use a constant batch ID of 1
+	batchStartParams := []string{"+1", batchType}
+	batchStartParams = append(batchStartParams, batchParams...)
+	batchStart := ircmsg.MakeMessage(nil, "", "BATCH", batchStartParams...)
+	for k, v := range tags {
+		batchStart.SetTag(k, v)
+	}
+	if label != "" {
+		batchStart.SetTag("label", label)
+	}
+	b, err := batchStart.LineBytesStrict(true, irc.MaxLineLen)
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(b)
+
+	for _, msg := range msgs {
+		msg.SetTag("batch", "1")
+		b, err = msg.LineBytesStrict(true, irc.MaxLineLen)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(b)
+	}
+
+	buf.WriteString("BATCH -1\r\n")
+
+	return buf.Bytes(), nil
+}
+
 // Use the connection to join a given channel.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.1
 func (irc *Connection) Join(channel string) error {

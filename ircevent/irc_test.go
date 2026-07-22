@@ -515,3 +515,80 @@ func TestGetReplyTarget(t *testing.T) {
 	// not a PRIVMSG
 	assertEqual(irc.GetReplyTarget(mustParse(":testnet.ergo.chat 371 shivaram :This is Ergo version 2.13.0.")), "")
 }
+
+const (
+	multilineCapName       = "draft/multiline"
+	multilineConcatTagName = "draft/multiline-concat"
+)
+
+func TestClientBatch(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+
+	// returns a batch callback that saves the message to a string
+	recvMultiline := func(target *string) BatchCallback {
+		return func(b *Batch) bool {
+			if b != nil && len(b.Params) >= 2 && b.Params[1] == multilineCapName {
+				var buf strings.Builder
+				for i, item := range b.Items {
+					if item.Command != "PRIVMSG" || len(item.Params) != 2 {
+						t.Fatalf("unexpected command in multiline batch: %s (%d params)", item.Command, len(item.Params))
+					}
+					if i != 0 && !item.HasTag(multilineConcatTagName) {
+						buf.WriteByte('\n')
+					}
+					buf.WriteString(item.Params[1])
+				}
+				*target = buf.String()
+				return true
+			}
+			return false
+		}
+	}
+
+	ircnick1 := randStr(8)
+	irccon1 := connForTesting(ircnick1, "IRCTest1", false)
+	irccon1.RequestCaps = []string{"message-tags", "batch", "echo-message", "labeled-response", multilineCapName}
+	var echoMessage string
+	debugTest(irccon1)
+
+	ircnick2 := randStr(8)
+	irccon2 := connForTesting(ircnick2, "IRCTest1", false)
+	irccon2.RequestCaps = []string{"message-tags", "batch", "echo-message", "labeled-response", multilineCapName}
+	var relayedMessage string
+	debugTest(irccon2)
+	irccon2.AddBatchCallback(recvMultiline(&relayedMessage))
+
+	if err := irccon1.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer irccon1.Quit()
+
+	if err := irccon2.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer irccon2.Quit()
+
+	_, err := irccon1.GetLabeledResponse(nil, "JOIN", channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = irccon2.GetLabeledResponse(nil, "JOIN", channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batchMsgs := []ircmsg.Message{
+		ircmsg.MakeMessage(nil, "", "PRIVMSG", channel, "hello"),
+		ircmsg.MakeMessage(nil, "", "PRIVMSG", channel, "how is "),
+		ircmsg.MakeMessage(map[string]string{multilineConcatTagName: ""}, "", "PRIVMSG", channel, "everyone?"),
+	}
+	batch, err := irccon1.GetLabeledResponseForBatch(batchMsgs, nil, multilineCapName, channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recvMultiline(&echoMessage)(batch)
+	assertEqual(echoMessage, "hello\nhow is everyone?")
+
+	irccon2.GetLabeledResponse(nil, "PING", "synchronize")
+	assertEqual(relayedMessage, "hello\nhow is everyone?")
+}
