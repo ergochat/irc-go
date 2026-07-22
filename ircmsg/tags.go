@@ -11,20 +11,22 @@ import (
 var (
 	// valtoescape replaces real characters with message tag escapes.
 	valtoescape = strings.NewReplacer("\\", "\\\\", ";", "\\:", " ", "\\s", "\r", "\\r", "\n", "\\n")
-
-	escapedCharLookupTable [256]byte
 )
 
-func init() {
-	// most chars escape to themselves
-	for i := 0; i < 256; i += 1 {
-		escapedCharLookupTable[i] = byte(i)
+// tag escapes have the form `\<byte>`; interpret the byte
+func unescapeTagByte(in byte) byte {
+	switch in {
+	case ':':
+		return ';'
+	case 's':
+		return ' '
+	case 'r':
+		return '\r'
+	case 'n':
+		return '\n'
+	default:
+		return in
 	}
-	// these are the exceptions
-	escapedCharLookupTable[':'] = ';'
-	escapedCharLookupTable['s'] = ' '
-	escapedCharLookupTable['r'] = '\r'
-	escapedCharLookupTable['n'] = '\n'
 }
 
 // EscapeTagValue takes a value, and returns an escaped message tag value.
@@ -69,7 +71,7 @@ func UnescapeTagValue(inString string) string {
 			buf.Grow(len(inString)) // just an optimization
 		}
 		buf.WriteString(remainder[:backslashPos])
-		buf.WriteByte(escapedCharLookupTable[remainder[backslashPos+1]])
+		buf.WriteByte(unescapeTagByte(remainder[backslashPos+1]))
 		remainder = remainder[backslashPos+2:]
 	}
 
