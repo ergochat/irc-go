@@ -441,7 +441,7 @@ func (irc *Connection) SendRaw(message string) error {
 // SendBatch sends a group of messages as an IRCv3 client batch, adding
 // BATCH start and end messages and an appropriate batch tag.
 func (irc *Connection) SendBatch(msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) error {
-	combinedMsg, err := irc.composeClientBatch("", msgs, nil, batchType, batchParams...)
+	combinedMsg, err := irc.composeClientBatch("", msgs, tags, batchType, batchParams...)
 	if err != nil {
 		return err
 	}
@@ -452,6 +452,9 @@ func (irc *Connection) SendBatch(msgs []ircmsg.Message, tags map[string]string, 
 // additionally using the IRCv3 labeled-response specification to collect
 // the response.
 func (irc *Connection) SendBatchWithLabel(callback func(*Batch), msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (err error) {
+	if !irc.labelNegotiated() {
+		return CapabilityNotNegotiated
+	}
 	label := irc.registerLabel(callback)
 	defer func() {
 		if err != nil {
