@@ -44,7 +44,7 @@ func TestRemoveCallback(t *testing.T) {
 	// Should remove callback at index 1
 	irccon.RemoveCallback(id)
 
-	irccon.runCallbacks(mockEvent("TEST"))
+	irccon.runCallbacks(mockEvent("TEST"), "")
 
 	var results []int
 
@@ -68,7 +68,7 @@ func TestClearCallback(t *testing.T) {
 	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 2 })
 	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 3 })
 
-	irccon.runCallbacks(mockEvent("TEST"))
+	irccon.runCallbacks(mockEvent("TEST"), "")
 
 	var results []int
 
@@ -591,4 +591,7 @@ func TestClientBatch(t *testing.T) {
 
 	irccon2.GetLabeledResponse(nil, "PING", "synchronize")
 	assertEqual(relayedMessage, "hello\nhow is everyone?")
+
+	assertEqual(irccon1.totalBatchSize, 0)
+	assertEqual(irccon2.totalBatchSize, 0)
 }

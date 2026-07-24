@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	maxBatchRecursionDepth = 1024
+
 	// fake events that we manage specially
 	registrationEvent = "\x00REGISTRATION"
 	disconnectEvent   = "\x00DISCONNECT"
@@ -188,13 +190,15 @@ func (irc *Connection) getBatchCallbacks() (result []batchCallbackPair) {
 var (
 	// ad-hoc internal errors for batch processing
 	// these indicate invalid data from the server (or else local corruption)
-	errorDuplicateBatchID = errors.New("found duplicate batch ID")
-	errorNoParentBatchID  = errors.New("parent batch ID not found")
-	errorBatchNotOpen     = errors.New("tried to close batch, but batch ID not found")
-	errorUnknownLabel     = errors.New("received labeled response from server, but we don't recognize the label")
+	errorDuplicateBatchID  = errors.New("found duplicate batch ID")
+	errorNoParentBatchID   = errors.New("parent batch ID not found")
+	errorBatchNotOpen      = errors.New("tried to close batch, but batch ID not found")
+	errorUnknownLabel      = errors.New("received labeled response from server, but we don't recognize the label")
+	errorMaxRecursionDepth = errors.New("maximum batch nesting depth exceeded")
+	errorMaxTotalBatchSize = errors.New("maximum total batched data exceeded limit")
 )
 
-func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
+func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fatalErr error) {
 	if len(msg.Params) < 1 || len(msg.Params[0]) < 2 {
 		irc.Log.Printf("Invalid BATCH command from server\n")
 		return
@@ -225,11 +229,12 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 			}
 			batchObj := new(Batch)
 			batchObj.Message = msg
-			irc.batches[batchID] = batchInProgress{
+			currentBip := batchInProgress{
 				createdAt: time.Now(),
 				batch:     batchObj,
 				label:     label,
 			}
+			var rootBatchID string // empty if this is the root
 			if isNested {
 				parentBip := irc.batches[parentBatchID]
 				if parentBip.batch == nil {
@@ -237,7 +242,38 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 					return
 				}
 				parentBip.batch.Items = append(parentBip.batch.Items, batchObj)
+				if parentBip.rootID != "" {
+					// multiple levels of nesting, the root is the parent's root
+					currentBip.rootID = parentBip.rootID
+					rootBatchID = parentBip.rootID
+				} else {
+					// first level of nesting, the parent is the root
+					rootBatchID = parentBatchID
+				}
+				currentBip.rootID = rootBatchID
+				currentBip.depth = parentBip.depth + 1
+				if currentBip.depth >= maxBatchRecursionDepth {
+					err = errorMaxRecursionDepth
+					return
+				}
 			}
+			// record the size of the current message in the root BIP
+			if rootBatchID == "" {
+				currentBip.size = len(rawMsg)
+				// we'll write it back to the map below
+			} else {
+				if rootBip, ok := irc.batches[rootBatchID]; ok {
+					rootBip.size += len(rawMsg)
+					irc.batches[rootBatchID] = rootBip
+				}
+			}
+			// record it in the total count as well
+			irc.totalBatchSize += len(rawMsg)
+			if irc.totalBatchSize > irc.MaxTotalBatchSize {
+				err = errorMaxTotalBatchSize
+				return
+			}
+			irc.batches[batchID] = currentBip
 		} else {
 			bip := irc.batches[batchID]
 			if bip.batch == nil {
@@ -245,6 +281,7 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 				return
 			}
 			delete(irc.batches, batchID)
+			irc.totalBatchSize -= bip.size
 			if !isNested {
 				finishedBatch = bip.batch
 				if bip.label != 0 {
@@ -252,19 +289,28 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 					if callback == nil {
 						err = errorUnknownLabel
 					}
-
 				}
 			}
 		}
 		return
 	}()
 
-	if err != nil {
+	switch err {
+	case nil:
+		// success, fire callback
+		if callback != nil {
+			callback(finishedBatch)
+		} else if finishedBatch != nil {
+			irc.HandleBatch(finishedBatch)
+		} // else: we closed a nested batch, wait for the root to close
+		return nil
+	case errorMaxRecursionDepth, errorMaxTotalBatchSize:
+		// these are fatal, tear down the connection and reset state
+		return err
+	default:
+		// non-fatal error, corrupt batch data but we can recover
 		irc.Log.Printf("batch error: %v (batchID=`%s`, parentBatchID=`%s`)", err, batchID, parentBatchID)
-	} else if callback != nil {
-		callback(finishedBatch)
-	} else if finishedBatch != nil {
-		irc.HandleBatch(finishedBatch)
+		return nil
 	}
 }
 
@@ -312,20 +358,43 @@ func (irc *Connection) handleBatchNaively(batch *Batch) {
 	}
 }
 
-func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string) {
+func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string, rawMsg string) error {
 	irc.batchMutex.Lock()
 	defer irc.batchMutex.Unlock()
 
 	bip := irc.batches[batchID]
 	if bip.batch == nil {
 		irc.Log.Printf("ignoring command with unknown batch ID %s\n", batchID)
-		return
+		return nil
+	}
+	// update root size. two cases, either this batch is the root, or it isn't
+	var rootBip batchInProgress
+	rootID := bip.rootID
+	if rootID == "" {
+		rootID = batchID // we are the root
+		rootBip = bip
+	} else {
+		// look up the root
+		var ok bool
+		rootBip, ok = irc.batches[rootID]
+		if !ok {
+			rootID = ""
+		}
+	}
+	if rootID != "" {
+		rootBip.size += len(rawMsg)
+		irc.batches[rootID] = rootBip
+	} // else: impossible
+	irc.totalBatchSize += len(rawMsg)
+	if irc.totalBatchSize > irc.MaxTotalBatchSize {
+		return errorMaxTotalBatchSize
 	}
 	bip.batch.Items = append(bip.batch.Items, &Batch{Message: msg})
+	return nil
 }
 
 // Execute all callbacks associated with a given event.
-func (irc *Connection) runCallbacks(msg ircmsg.Message) {
+func (irc *Connection) runCallbacks(msg ircmsg.Message, rawMsg string) (fatalErr error) {
 	if !irc.AllowPanic {
 		defer irc.handleCallbackPanic()
 	}
@@ -333,11 +402,9 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	// handle batch start or end
 	if irc.batchNegotiated() {
 		if msg.Command == "BATCH" {
-			irc.handleBatchCommand(msg)
-			return
+			return irc.handleBatchCommand(msg, rawMsg)
 		} else if hasBatchTag, batchID := msg.GetTag("batch"); hasBatchTag {
-			irc.handleBatchedCommand(msg, batchID)
-			return
+			return irc.handleBatchedCommand(msg, batchID, rawMsg)
 		}
 	}
 
@@ -350,18 +417,19 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 			}
 			if labelCallback == nil {
 				irc.Log.Printf("received unrecognized label from server: %s\n", labelStr)
-				return
+				return nil
 			} else {
 				labelCallback(&Batch{
 					Message: msg,
 				})
 			}
-			return
+			return nil
 		}
 	}
 
 	// OK, it's a normal IRC command
 	irc.HandleMessage(msg)
+	return nil
 }
 
 func (irc *Connection) handleCallbackPanic() {

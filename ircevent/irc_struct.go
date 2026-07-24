@@ -68,7 +68,8 @@ type Connection struct {
 	AllowTruncation bool // if set, truncate lines exceeding MaxLineLen and send them
 	FetchUserHost   bool // if set, attempt to retrieve userhost on connect so that MaxMsgByteLen works
 	// set this to configure how the connection is made (e.g. via a proxy server):
-	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	DialContext       func(ctx context.Context, network, addr string) (net.Conn, error)
+	MaxTotalBatchSize int // limit on total buffered BATCH data from the server
 
 	// networking and synchronization
 	stateMutex sync.Mutex     // innermost mutex: don't block while holding this
@@ -114,6 +115,7 @@ type Connection struct {
 
 	batchMutex     sync.Mutex
 	batches        map[string]batchInProgress
+	totalBatchSize int
 	labelCallbacks map[int64]pendingLabel
 	labelCounter   int64
 
@@ -125,6 +127,10 @@ type batchInProgress struct {
 	label     int64
 	// needs to be heap-allocated so we can append to batch.Items:
 	batch *Batch
+	// size / resource tracking:
+	size   int    // only tracked for root batches
+	rootID string // root ID to attribute size increases to
+	depth  int    // tracked for all batches
 }
 
 type pendingLabel struct {

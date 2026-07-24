@@ -3,12 +3,14 @@ package main
 import (
 	"crypto/tls"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/ergochat/irc-go/ircevent"
 	"github.com/ergochat/irc-go/ircmsg"
+	"github.com/ergochat/irc-go/ircreader"
 )
 
 func getenv(key, defaultValue string) (value string) {
@@ -19,6 +21,30 @@ func getenv(key, defaultValue string) (value string) {
 	return
 }
 
+// optionally accept raw IRC commands over TCP and send them as IRC lines
+func serveDebugSocket(listener net.Listener, irc *ircevent.Connection) {
+	for {
+		s, err := listener.Accept()
+		if err != nil {
+			log.Printf("listener error: %v", err)
+			return
+		}
+		go serveDebugConnection(s, irc)
+	}
+}
+
+func serveDebugConnection(conn net.Conn, irc *ircevent.Connection) {
+	reader := ircreader.NewIRCReader(conn)
+	for {
+		line, err := reader.ReadLine()
+		if err != nil {
+			log.Printf("listener read error: %v", err)
+			return
+		}
+		irc.SendRaw(string(line))
+	}
+}
+
 func main() {
 	nick := getenv("IRCEVENT_NICK", "robot")
 	server := getenv("IRCEVENT_SERVER", "testnet.ergo.chat:6697")
@@ -27,14 +53,23 @@ func main() {
 	saslPassword := os.Getenv("IRCEVENT_SASL_PASSWORD")
 
 	irc := ircevent.Connection{
-		Server:       server,
-		Nick:         nick,
-		Debug:        true,
-		UseTLS:       true,
-		TLSConfig:    &tls.Config{InsecureSkipVerify: true},
-		RequestCaps:  []string{"server-time", "message-tags"},
-		SASLLogin:    saslLogin, // SASL PLAIN will be enabled automatically if these are set
-		SASLPassword: saslPassword,
+		Server:            server,
+		Nick:              nick,
+		Debug:             true,
+		UseTLS:            true,
+		TLSConfig:         &tls.Config{InsecureSkipVerify: true},
+		RequestCaps:       []string{"server-time", "message-tags", "batch"},
+		SASLLogin:         saslLogin, // SASL PLAIN will be enabled automatically if these are set
+		SASLPassword:      saslPassword,
+		MaxTotalBatchSize: 1024 * 1024,
+	}
+
+	if listenSocket := os.Getenv("IRCEVENT_DEBUG_LISTEN_ADDR"); listenSocket != "" {
+		if listener, err := net.Listen("tcp", listenSocket); err == nil {
+			go serveDebugSocket(listener, &irc)
+		} else {
+			log.Printf("failed to open listen socket: %v", err)
+		}
 	}
 
 	if certKeyFile := os.Getenv("IRCEVENT_SASL_CLIENTCERT"); certKeyFile != "" {

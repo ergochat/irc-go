@@ -133,7 +133,11 @@ func (irc *Connection) readLoop() {
 
 			parsedMsg, err := ircmsg.ParseLine(msg)
 			if err == nil {
-				irc.runCallbacks(parsedMsg)
+				err = irc.runCallbacks(parsedMsg, msg)
+				if err != nil {
+					irc.setError(err)
+					return
+				}
 			} else {
 				irc.Log.Printf("invalid message from server: %v\n", err)
 			}
@@ -815,6 +819,9 @@ func (irc *Connection) Connect() (err error) {
 		if irc.MaxLineLen == 0 {
 			irc.MaxLineLen = 512
 		}
+		if irc.MaxTotalBatchSize == 0 {
+			irc.MaxTotalBatchSize = 8 * 1024 * 1024
+		}
 		if irc.Version == "" {
 			irc.Version = Version
 		}
@@ -863,6 +870,7 @@ func (irc *Connection) Connect() (err error) {
 	irc.stateMutex.Unlock()
 	irc.batchMutex.Lock()
 	irc.batches = make(map[string]batchInProgress)
+	irc.totalBatchSize = 0
 	irc.labelCallbacks = make(map[int64]pendingLabel)
 	irc.labelCounter = 0
 	irc.batchMutex.Unlock()
