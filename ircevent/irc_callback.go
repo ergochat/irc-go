@@ -384,7 +384,7 @@ func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string, 
 	if rootID != "" {
 		rootBip.size += len(rawMsg)
 		irc.batches[rootID] = rootBip
-	} // else: impossible
+	} // else: impossible with well-formed server batches
 	irc.totalBatchSize += len(rawMsg)
 	if irc.totalBatchSize > irc.MaxTotalBatchSize {
 		return errorMaxTotalBatchSize
