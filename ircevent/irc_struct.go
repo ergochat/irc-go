@@ -114,7 +114,7 @@ type Connection struct {
 	hasBaseCallbacks bool
 
 	batchMutex     sync.Mutex
-	batches        map[string]batchInProgress
+	batches        map[string]*batchInProgress
 	totalBatchSize int
 	labelCallbacks map[int64]pendingLabel
 	labelCounter   int64
@@ -125,12 +125,13 @@ type Connection struct {
 type batchInProgress struct {
 	createdAt time.Time
 	label     int64
-	// needs to be heap-allocated so we can append to batch.Items:
-	batch *Batch
-	// size / resource tracking:
-	size   int    // only tracked for root batches
-	rootID string // root ID to attribute size increases to
-	depth  int    // tracked for all batches
+	batch     Batch
+	// size / resource / consistency tracking:
+	size         int              // only tracked for root batches
+	root         *batchInProgress // nil for root batches, otherwise points to the root
+	parent       *batchInProgress // nil for root batches, otherwise points to the parent
+	depth        int              // tracked for all batches
+	openChildren int              // tracked for all batches
 }
 
 type pendingLabel struct {

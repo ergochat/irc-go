@@ -190,12 +190,13 @@ func (irc *Connection) getBatchCallbacks() (result []batchCallbackPair) {
 var (
 	// ad-hoc internal errors for batch processing
 	// these indicate invalid data from the server (or else local corruption)
-	errorDuplicateBatchID  = errors.New("found duplicate batch ID")
-	errorNoParentBatchID   = errors.New("parent batch ID not found")
-	errorBatchNotOpen      = errors.New("tried to close batch, but batch ID not found")
-	errorUnknownLabel      = errors.New("received labeled response from server, but we don't recognize the label")
-	errorMaxRecursionDepth = errors.New("maximum batch nesting depth exceeded")
-	errorMaxTotalBatchSize = errors.New("maximum total batched data exceeded limit")
+	errorDuplicateBatchID    = errors.New("found duplicate batch ID")
+	errorNoParentBatchID     = errors.New("parent batch ID not found")
+	errorBatchNotOpen        = errors.New("tried to close batch, but batch ID not found")
+	errorUnknownLabel        = errors.New("received labeled response from server, but we don't recognize the label")
+	errorMaxRecursionDepth   = errors.New("maximum batch nesting depth exceeded")
+	errorMaxTotalBatchSize   = errors.New("maximum total batched data exceeded limit")
+	errorInvalidBatchNesting = errors.New("invalid batch nesting detected")
 )
 
 func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fatalErr error) {
@@ -227,47 +228,41 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fa
 				err = errorDuplicateBatchID
 				return
 			}
-			batchObj := new(Batch)
-			batchObj.Message = msg
-			currentBip := batchInProgress{
+			currentBip := &batchInProgress{
 				createdAt: time.Now(),
-				batch:     batchObj,
-				label:     label,
+				batch: Batch{
+					Message: msg,
+				},
+				label: label,
 			}
-			var rootBatchID string // empty if this is the root
 			if isNested {
-				parentBip := irc.batches[parentBatchID]
-				if parentBip.batch == nil {
+				parentBip, ok := irc.batches[parentBatchID]
+				if !ok {
 					err = errorNoParentBatchID
 					return
 				}
-				parentBip.batch.Items = append(parentBip.batch.Items, batchObj)
-				if parentBip.rootID != "" {
+				parentBip.batch.Items = append(parentBip.batch.Items, &currentBip.batch)
+				parentBip.openChildren += 1
+				currentBip.parent = parentBip
+				var rootBip *batchInProgress
+				if parentBip.root != nil {
 					// multiple levels of nesting, the root is the parent's root
-					currentBip.rootID = parentBip.rootID
-					rootBatchID = parentBip.rootID
+					rootBip = parentBip.root
 				} else {
 					// first level of nesting, the parent is the root
-					rootBatchID = parentBatchID
+					rootBip = parentBip
 				}
-				currentBip.rootID = rootBatchID
+				currentBip.root = rootBip
 				currentBip.depth = parentBip.depth + 1
 				if currentBip.depth >= maxBatchRecursionDepth {
 					err = errorMaxRecursionDepth
 					return
 				}
-			}
-			// record the size of the current message in the root BIP
-			if rootBatchID == "" {
-				currentBip.size = len(rawMsg)
-				// we'll write it back to the map below
+				rootBip.size += len(rawMsg)
 			} else {
-				if rootBip, ok := irc.batches[rootBatchID]; ok {
-					rootBip.size += len(rawMsg)
-					irc.batches[rootBatchID] = rootBip
-				}
+				currentBip.size = len(rawMsg) // we are the root
 			}
-			// record it in the total count as well
+			// track total batch size for the whole forest
 			irc.totalBatchSize += len(rawMsg)
 			if irc.totalBatchSize > irc.MaxTotalBatchSize {
 				err = errorMaxTotalBatchSize
@@ -275,15 +270,23 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fa
 			}
 			irc.batches[batchID] = currentBip
 		} else {
-			bip := irc.batches[batchID]
-			if bip.batch == nil {
+			bip, ok := irc.batches[batchID]
+			if !ok {
 				err = errorBatchNotOpen
 				return
+			}
+			if bip.openChildren != 0 {
+				err = errorInvalidBatchNesting // orphaned batch could result in data race
+				return
+			}
+			if bip.parent != nil {
+				// we ignore the nested batch tag and rely on our own record of who the parent is
+				bip.parent.openChildren -= 1
 			}
 			delete(irc.batches, batchID)
 			irc.totalBatchSize -= bip.size
 			if !isNested {
-				finishedBatch = bip.batch
+				finishedBatch = &bip.batch
 				if bip.label != 0 {
 					callback = irc.getLabelCallbackNoMutex(bip.label)
 					if callback == nil {
@@ -304,7 +307,7 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fa
 			irc.HandleBatch(finishedBatch)
 		} // else: we closed a nested batch, wait for the root to close
 		return nil
-	case errorMaxRecursionDepth, errorMaxTotalBatchSize:
+	case errorMaxRecursionDepth, errorMaxTotalBatchSize, errorInvalidBatchNesting:
 		// these are fatal, tear down the connection and reset state
 		return err
 	default:
@@ -362,29 +365,16 @@ func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string, 
 	irc.batchMutex.Lock()
 	defer irc.batchMutex.Unlock()
 
-	bip := irc.batches[batchID]
-	if bip.batch == nil {
+	bip, ok := irc.batches[batchID]
+	if !ok {
 		irc.Log.Printf("ignoring command with unknown batch ID %s\n", batchID)
 		return nil
 	}
-	// update root size. two cases, either this batch is the root, or it isn't
-	var rootBip batchInProgress
-	rootID := bip.rootID
-	if rootID == "" {
-		rootID = batchID // we are the root
-		rootBip = bip
+	if bip.root == nil {
+		bip.size += len(rawMsg)
 	} else {
-		// look up the root
-		var ok bool
-		rootBip, ok = irc.batches[rootID]
-		if !ok {
-			rootID = ""
-		}
+		bip.root.size += len(rawMsg)
 	}
-	if rootID != "" {
-		rootBip.size += len(rawMsg)
-		irc.batches[rootID] = rootBip
-	} // else: impossible with well-formed server batches
 	irc.totalBatchSize += len(rawMsg)
 	if irc.totalBatchSize > irc.MaxTotalBatchSize {
 		return errorMaxTotalBatchSize

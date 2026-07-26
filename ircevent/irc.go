@@ -869,7 +869,7 @@ func (irc *Connection) Connect() (err error) {
 	irc.capsAdvertised = nil
 	irc.stateMutex.Unlock()
 	irc.batchMutex.Lock()
-	irc.batches = make(map[string]batchInProgress)
+	irc.batches = make(map[string]*batchInProgress)
 	irc.totalBatchSize = 0
 	irc.labelCallbacks = make(map[int64]pendingLabel)
 	irc.labelCounter = 0
