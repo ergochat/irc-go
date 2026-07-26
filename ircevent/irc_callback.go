@@ -197,6 +197,7 @@ var (
 	errorMaxRecursionDepth   = errors.New("maximum batch nesting depth exceeded")
 	errorMaxTotalBatchSize   = errors.New("maximum total batched data exceeded limit")
 	errorInvalidBatchNesting = errors.New("invalid batch nesting detected")
+	errorBatchTimedOut       = errors.New("server opened a batch and didn't close it")
 )
 
 func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fatalErr error) {
@@ -741,11 +742,14 @@ func (irc *Connection) unregisterLabel(labelStr string) {
 	delete(irc.labelCallbacks, label)
 }
 
-// expire open batches from the server that weren't closed in a
-// timely fashion. `force` expires all label callbacks regardless
-// of time created (so they can be cleaned up when the connection
-// fails).
-func (irc *Connection) expireBatches(force bool) {
+// check for two kinds of server batch failure:
+//   - labeled responses that never arrived (this is not fatal)
+//   - server batches that were opened and never closed (this is fatal
+//     because it corrupts the batch tracking state)
+//
+// `force` expires all label callbacks regardless of time (so they
+// can be triggered when the connection fails for any reason).
+func (irc *Connection) expireBatches(force bool) (fatalErr error) {
 	var failedCallbacks []LabelCallback
 	defer func() {
 		for _, bcb := range failedCallbacks {
@@ -764,11 +768,13 @@ func (irc *Connection) expireBatches(force bool) {
 		}
 	}
 
-	for batchID, bip := range irc.batches {
+	for _, bip := range irc.batches {
 		if now.Sub(bip.createdAt) > irc.KeepAlive {
-			delete(irc.batches, batchID)
+			return errorBatchTimedOut
 		}
 	}
+
+	return nil
 }
 
 func splitCAPToken(token string) (name, value string) {
