@@ -285,7 +285,7 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fa
 			}
 			delete(irc.batches, batchID)
 			irc.totalBatchSize -= bip.size
-			if !isNested {
+			if bip.root == nil {
 				finishedBatch = &bip.batch
 				if bip.label != 0 {
 					callback = irc.getLabelCallbackNoMutex(bip.label)
