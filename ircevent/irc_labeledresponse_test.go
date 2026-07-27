@@ -11,9 +11,7 @@ import (
 )
 
 const (
-	multilineName   = "draft/multiline"
 	chathistoryName = "draft/chathistory"
-	concatTag       = "draft/multiline-concat"
 	playbackCap     = "draft/event-playback"
 )
 
@@ -123,7 +121,7 @@ func randomString() string {
 func TestNestedBatch(t *testing.T) {
 	irc := connForTesting("go-eventirc", "go-eventirc", false)
 	irc.Debug = true
-	irc.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", multilineName, chathistoryName, playbackCap}
+	irc.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", multilineCapName, chathistoryName, playbackCap}
 	channel := fmt.Sprintf("#%s", randomString())
 
 	err := irc.Connect()
@@ -137,7 +135,7 @@ func TestNestedBatch(t *testing.T) {
 	irc.Send("BATCH", "+123", "draft/multiline", channel)
 	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "hello")
 	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "")
-	irc.SendWithTags(map[string]string{"batch": "123", concatTag: ""}, "PRIVMSG", channel, "how is ")
+	irc.SendWithTags(map[string]string{"batch": "123", multilineConcatTagName: ""}, "PRIVMSG", channel, "how is ")
 	irc.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "everyone?")
 	irc.Send("BATCH", "-123")
 
@@ -152,7 +150,7 @@ func TestNestedBatch(t *testing.T) {
 	assertEqual(len(irc.labelCallbacks), 0)
 
 	if historyBatch == nil {
-		t.Errorf("received nil history batch")
+		t.Fatalf("received nil history batch")
 	}
 
 	// history should contain the JOIN, the PRIVMSG, and the multiline batch as a single item
@@ -182,7 +180,7 @@ func TestNestedBatch(t *testing.T) {
 func TestBatchHandlers(t *testing.T) {
 	alice := connForTesting("alice", "go-eventirc", false)
 	alice.Debug = true
-	alice.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", "echo-message", multilineName, chathistoryName, playbackCap}
+	alice.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", "echo-message", multilineCapName, chathistoryName, playbackCap}
 	channel := fmt.Sprintf("#%s", randomString())
 
 	aliceUnderstandsBatches := true
@@ -208,16 +206,16 @@ func TestBatchHandlers(t *testing.T) {
 
 	bob := connForTesting("bob", "go-eventirc", false)
 	bob.Debug = true
-	bob.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", "echo-message", multilineName, chathistoryName, playbackCap}
+	bob.RequestCaps = []string{"message-tags", "batch", "labeled-response", "server-time", "echo-message", multilineCapName, chathistoryName, playbackCap}
 	var buf bytes.Buffer
 	bob.AddBatchCallback(func(b *Batch) bool {
-		if !(len(b.Params) >= 3 && b.Params[1] == multilineName) {
+		if !(len(b.Params) >= 3 && b.Params[1] == multilineCapName) {
 			return false
 		}
 		for i, item := range b.Items {
 			if item.Command == "PRIVMSG" {
 				buf.WriteString(item.Params[1])
-				if !(item.HasTag(concatTag) || i == len(b.Items)-1) {
+				if !(item.HasTag(multilineConcatTagName) || i == len(b.Items)-1) {
 					buf.WriteByte('\n')
 				}
 			}
@@ -237,7 +235,7 @@ func TestBatchHandlers(t *testing.T) {
 		alice.Send("BATCH", "+123", "draft/multiline", channel)
 		alice.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "hello")
 		alice.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "")
-		alice.SendWithTags(map[string]string{"batch": "123", concatTag: ""}, "PRIVMSG", channel, "how is ")
+		alice.SendWithTags(map[string]string{"batch": "123", multilineConcatTagName: ""}, "PRIVMSG", channel, "how is ")
 		alice.SendWithTags(map[string]string{"batch": "123"}, "PRIVMSG", channel, "everyone?")
 		alice.Send("BATCH", "-123")
 		synchronize(alice)
@@ -265,7 +263,9 @@ func TestBatchHandlers(t *testing.T) {
 	assertEqual(buf.String(), multilineMessageValue)
 
 	assertEqual(len(alice.batches), 0)
+	assertEqual(alice.totalBatchSize, 0)
 	assertEqual(len(bob.batches), 0)
+	assertEqual(bob.totalBatchSize, 0)
 	alice.Quit()
 	bob.Quit()
 }
