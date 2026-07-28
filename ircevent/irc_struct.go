@@ -66,7 +66,7 @@ type Connection struct {
 	Debug           bool
 	AllowPanic      bool // if set, don't recover() from panics in callbacks
 	AllowTruncation bool // if set, truncate lines exceeding MaxLineLen and send them
-	FetchUserHost   bool // if set, attempt to retrieve userhost on connect so that MaxMsgByteLen works
+	FetchUserHost   bool // if set, attempt to retrieve userhost on connect so that MaxMessageLength works
 	// set this to configure how the connection is made (e.g. via a proxy server):
 	DialContext       func(ctx context.Context, network, addr string) (net.Conn, error)
 	MaxTotalBatchSize int // limit on total buffered BATCH data from the server
