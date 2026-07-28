@@ -147,10 +147,7 @@ func (irc *Connection) readLoop() {
 		}
 
 		if irc.batchNegotiated() && time.Since(lastExpireCheck) > irc.Timeout {
-			if fatalErr := irc.expireBatches(false); fatalErr != nil {
-				irc.setError(fatalErr)
-				return
-			}
+			irc.expireBatches(false)
 			lastExpireCheck = time.Now()
 		}
 	}
