@@ -622,7 +622,7 @@ func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
 // ircd). Note that this value is not a strict guarantee because the server
 // can change the client's NUH unilaterally at any time; implementations may
 // wish to use a more conservative constant maximum instead.
-func (irc *Connection) MaxMsgByteLen(target string) int {
+func (irc *Connection) MaxMessageLength(target string) int {
 	nick, userHost := irc.getOrRequestUserHost()
 	var userhostLen int
 	if userHost != "" {
@@ -766,8 +766,6 @@ func (irc *Connection) Connect() (err error) {
 		irc.running = false
 		irc.socket = nil
 		irc.currentNick = ""
-		irc.userHost = ""
-		irc.userHostRequested = false
 		irc.lastError = nil
 		irc.pingSent = false
 
@@ -866,6 +864,8 @@ func (irc *Connection) Connect() (err error) {
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty)
 	irc.registered = false
+	irc.userHost = ""
+	irc.userHostRequested = false
 	irc.isupportPartial = make(map[string]string)
 	irc.isupport = nil
 	irc.capsAcked = make(map[string]string)

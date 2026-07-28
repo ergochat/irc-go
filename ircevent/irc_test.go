@@ -89,7 +89,7 @@ func TestIRCemptyNick(t *testing.T) {
 	}
 }
 
-func TestIRCMaxMsgByteLen(t *testing.T) {
+func TestIRCMaxMessageLength(t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "go-eventirc", false)
 	debugTest(irccon)
@@ -123,8 +123,8 @@ func TestIRCMaxMsgByteLen(t *testing.T) {
 		t.Errorf("Can't connect to testing ircd.")
 	}
 	<-gotUserhost
-	// now MaxMsgByteLen should return the real upper bound
-	maxMsgByteLen := irccon.MaxMsgByteLen(ircnick1)
+	// now MaxMessageLength should return the real upper bound
+	maxMsgByteLen := irccon.MaxMessageLength(ircnick1)
 	msg := randStr(maxMsgByteLen)
 	err = irccon.Privmsg(ircnick1, msg)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestIRCMaxMsgByteLen(t *testing.T) {
 	// message should either be relayed with truncation, or rejected,
 	// depending on implementation
 	if msg == rcvdMsg {
-		t.Errorf("Successfully relayed message over MaxMsgByteLen() bytes: %d", len(msg))
+		t.Errorf("Successfully relayed message over MaxMessageLength() bytes: %d", len(msg))
 	}
 }
 
