@@ -134,7 +134,11 @@ func (irc *Connection) readLoop() {
 
 			parsedMsg, err := ircmsg.ParseLine(msg)
 			if err == nil {
-				irc.runCallbacks(parsedMsg)
+				err = irc.runCallbacks(parsedMsg, msg)
+				if err != nil {
+					irc.setError(err)
+					return
+				}
 			} else {
 				irc.Log.Printf("invalid message from server: %v\n", err)
 			}
@@ -144,7 +148,10 @@ func (irc *Connection) readLoop() {
 		}
 
 		if irc.batchNegotiated() && time.Since(lastExpireCheck) > irc.Timeout {
-			irc.expireBatches(false)
+			if fatalErr := irc.expireBatches(false); fatalErr != nil {
+				irc.setError(fatalErr)
+				return
+			}
 			lastExpireCheck = time.Now()
 		}
 	}
@@ -490,6 +497,90 @@ func (irc *Connection) SendRaw(message string) error {
 	return irc.sendInternal(buf)
 }
 
+// SendBatch sends a group of messages as an IRCv3 client batch, adding
+// BATCH start and end messages and an appropriate batch tag.
+func (irc *Connection) SendBatch(msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) error {
+	combinedMsg, err := irc.composeClientBatch("", msgs, tags, batchType, batchParams...)
+	if err != nil {
+		return err
+	}
+	return irc.sendInternal(combinedMsg)
+}
+
+// SendBatchWithLabel sends a group of messages as an IRCv3 client batch,
+// additionally using the IRCv3 labeled-response specification to collect
+// the response.
+func (irc *Connection) SendBatchWithLabel(callback func(*Batch), msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (err error) {
+	if !irc.labelNegotiated() {
+		return CapabilityNotNegotiated
+	}
+	label := irc.registerLabel(callback)
+	defer func() {
+		if err != nil {
+			irc.unregisterLabel(label)
+		}
+	}()
+
+	combinedMsg, err := irc.composeClientBatch(label, msgs, tags, batchType, batchParams...)
+	if err != nil {
+		return err
+	}
+
+	return irc.sendInternal(combinedMsg)
+}
+
+// GetLabeledResponseForBatch sends a group of messages as an IRCv3 client batch,
+// using the IRCv3 labeled-response specification, then synchronously waits for
+// the response.
+func (irc *Connection) GetLabeledResponseForBatch(msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (batch *Batch, err error) {
+	done := make(chan empty)
+	err = irc.SendBatchWithLabel(func(b *Batch) {
+		batch = b
+		close(done)
+	}, msgs, tags, batchType, batchParams...)
+	if err != nil {
+		return
+	}
+	<-done
+	if batch == nil {
+		err = NoLabeledResponse
+	}
+	return
+}
+
+func (irc *Connection) composeClientBatch(label string, msgs []ircmsg.Message, tags map[string]string, batchType string, batchParams ...string) (result []byte, err error) {
+	var buf bytes.Buffer
+	// only one client batch can be in flight at a time,
+	// so we can use a constant batch ID of 1
+	batchStartParams := []string{"+1", batchType}
+	batchStartParams = append(batchStartParams, batchParams...)
+	batchStart := ircmsg.MakeMessage(nil, "", "BATCH", batchStartParams...)
+	for k, v := range tags {
+		batchStart.SetTag(k, v)
+	}
+	if label != "" {
+		batchStart.SetTag("label", label)
+	}
+	b, err := batchStart.LineBytesStrict(true, irc.MaxLineLen)
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(b)
+
+	for _, msg := range msgs {
+		msg.SetTag("batch", "1")
+		b, err = msg.LineBytesStrict(true, irc.MaxLineLen)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(b)
+	}
+
+	buf.WriteString("BATCH -1\r\n")
+
+	return buf.Bytes(), nil
+}
+
 // Use the connection to join a given channel.
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.1
 func (irc *Connection) Join(channel string) error {
@@ -583,7 +674,7 @@ func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
 // ircd). Note that this value is not a strict guarantee because the server
 // can change the client's NUH unilaterally at any time; implementations may
 // wish to use a more conservative constant maximum instead.
-func (irc *Connection) MaxMsgByteLen(target string) int {
+func (irc *Connection) MaxMessageLength(target string) int {
 	nick, userHost := irc.getOrRequestUserHost()
 	var userhostLen int
 	if userHost != "" {
@@ -770,6 +861,9 @@ func (irc *Connection) performConfigNormalization() error {
 	if irc.MaxLineLen == 0 {
 		irc.MaxLineLen = 512
 	}
+	if irc.MaxTotalBatchSize == 0 {
+		irc.MaxTotalBatchSize = 8 * 1024 * 1024
+	}
 	if irc.Version == "" {
 		irc.Version = Version
 	}
@@ -869,13 +963,16 @@ func (irc *Connection) Connect() (err error) {
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty)
 	irc.registered = false
+	irc.userHost = ""
+	irc.userHostRequested = false
 	irc.isupportPartial = make(map[string]string)
 	irc.isupport = nil
 	irc.capsAcked = make(map[string]string)
 	irc.capsAdvertised = nil
 	irc.stateMutex.Unlock()
 	irc.batchMutex.Lock()
-	irc.batches = make(map[string]batchInProgress)
+	irc.batches = make(map[string]*batchInProgress)
+	irc.totalBatchSize = 0
 	irc.labelCallbacks = make(map[int64]pendingLabel)
 	irc.labelCounter = 0
 	irc.batchMutex.Unlock()

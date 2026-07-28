@@ -44,7 +44,7 @@ func TestRemoveCallback(t *testing.T) {
 	// Should remove callback at index 1
 	irccon.RemoveCallback(id)
 
-	irccon.runCallbacks(mockEvent("TEST"))
+	irccon.runCallbacks(mockEvent("TEST"), "")
 
 	var results []int
 
@@ -68,7 +68,7 @@ func TestClearCallback(t *testing.T) {
 	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 2 })
 	irccon.AddCallback("TEST", func(e ircmsg.Message) { done <- 3 })
 
-	irccon.runCallbacks(mockEvent("TEST"))
+	irccon.runCallbacks(mockEvent("TEST"), "")
 
 	var results []int
 
@@ -89,7 +89,7 @@ func TestIRCemptyNick(t *testing.T) {
 	}
 }
 
-func TestIRCMaxMsgByteLen(t *testing.T) {
+func TestIRCMaxMessageLength(t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "go-eventirc", false)
 	debugTest(irccon)
@@ -123,8 +123,8 @@ func TestIRCMaxMsgByteLen(t *testing.T) {
 		t.Errorf("Can't connect to testing ircd.")
 	}
 	<-gotUserhost
-	// now MaxMsgByteLen should return the real upper bound
-	maxMsgByteLen := irccon.MaxMsgByteLen(ircnick1)
+	// now MaxMessageLength should return the real upper bound
+	maxMsgByteLen := irccon.MaxMessageLength(ircnick1)
 	msg := randStr(maxMsgByteLen)
 	err = irccon.Privmsg(ircnick1, msg)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestIRCMaxMsgByteLen(t *testing.T) {
 	// message should either be relayed with truncation, or rejected,
 	// depending on implementation
 	if msg == rcvdMsg {
-		t.Errorf("Successfully relayed message over MaxMsgByteLen() bytes: %d", len(msg))
+		t.Errorf("Successfully relayed message over MaxMessageLength() bytes: %d", len(msg))
 	}
 }
 
@@ -514,4 +514,84 @@ func TestGetReplyTarget(t *testing.T) {
 	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG :")), "")
 	// not a PRIVMSG
 	assertEqual(irc.GetReplyTarget(mustParse(":testnet.ergo.chat 371 shivaram :This is Ergo version 2.13.0.")), "")
+}
+
+const (
+	multilineCapName       = "draft/multiline"
+	multilineConcatTagName = "draft/multiline-concat"
+)
+
+func TestClientBatch(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+
+	// returns a batch callback that saves the message to a string
+	recvMultiline := func(target *string) BatchCallback {
+		return func(b *Batch) bool {
+			if b != nil && len(b.Params) >= 2 && b.Params[1] == multilineCapName {
+				var buf strings.Builder
+				for i, item := range b.Items {
+					if item.Command != "PRIVMSG" || len(item.Params) != 2 {
+						t.Fatalf("unexpected command in multiline batch: %s (%d params)", item.Command, len(item.Params))
+					}
+					if i != 0 && !item.HasTag(multilineConcatTagName) {
+						buf.WriteByte('\n')
+					}
+					buf.WriteString(item.Params[1])
+				}
+				*target = buf.String()
+				return true
+			}
+			return false
+		}
+	}
+
+	ircnick1 := randStr(8)
+	irccon1 := connForTesting(ircnick1, "IRCTest1", false)
+	irccon1.RequestCaps = []string{"message-tags", "batch", "echo-message", "labeled-response", multilineCapName}
+	var echoMessage string
+	debugTest(irccon1)
+
+	ircnick2 := randStr(8)
+	irccon2 := connForTesting(ircnick2, "IRCTest1", false)
+	irccon2.RequestCaps = []string{"message-tags", "batch", "echo-message", "labeled-response", multilineCapName}
+	var relayedMessage string
+	debugTest(irccon2)
+	irccon2.AddBatchCallback(recvMultiline(&relayedMessage))
+
+	if err := irccon1.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer irccon1.Quit()
+
+	if err := irccon2.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer irccon2.Quit()
+
+	_, err := irccon1.GetLabeledResponse(nil, "JOIN", channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = irccon2.GetLabeledResponse(nil, "JOIN", channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batchMsgs := []ircmsg.Message{
+		ircmsg.MakeMessage(nil, "", "PRIVMSG", channel, "hello"),
+		ircmsg.MakeMessage(nil, "", "PRIVMSG", channel, "how is "),
+		ircmsg.MakeMessage(map[string]string{multilineConcatTagName: ""}, "", "PRIVMSG", channel, "everyone?"),
+	}
+	batch, err := irccon1.GetLabeledResponseForBatch(batchMsgs, nil, multilineCapName, channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recvMultiline(&echoMessage)(batch)
+	assertEqual(echoMessage, "hello\nhow is everyone?")
+
+	irccon2.GetLabeledResponse(nil, "PING", "synchronize")
+	assertEqual(relayedMessage, "hello\nhow is everyone?")
+
+	assertEqual(irccon1.totalBatchSize, 0)
+	assertEqual(irccon2.totalBatchSize, 0)
 }

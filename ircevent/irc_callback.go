@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	maxBatchRecursionDepth = 1024
+
 	// fake events that we manage specially
 	registrationEvent = "\x00REGISTRATION"
 	disconnectEvent   = "\x00DISCONNECT"
@@ -188,13 +190,17 @@ func (irc *Connection) getBatchCallbacks() (result []batchCallbackPair) {
 var (
 	// ad-hoc internal errors for batch processing
 	// these indicate invalid data from the server (or else local corruption)
-	errorDuplicateBatchID = errors.New("found duplicate batch ID")
-	errorNoParentBatchID  = errors.New("parent batch ID not found")
-	errorBatchNotOpen     = errors.New("tried to close batch, but batch ID not found")
-	errorUnknownLabel     = errors.New("received labeled response from server, but we don't recognize the label")
+	errorDuplicateBatchID    = errors.New("found duplicate batch ID")
+	errorNoParentBatchID     = errors.New("parent batch ID not found")
+	errorBatchNotOpen        = errors.New("tried to close batch, but batch ID not found")
+	errorUnknownLabel        = errors.New("received labeled response from server, but we don't recognize the label")
+	errorMaxRecursionDepth   = errors.New("maximum batch nesting depth exceeded")
+	errorMaxTotalBatchSize   = errors.New("maximum total batched data exceeded limit")
+	errorInvalidBatchNesting = errors.New("invalid batch nesting detected")
+	errorBatchTimedOut       = errors.New("server opened a batch and didn't close it")
 )
 
-func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
+func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fatalErr error) {
 	if len(msg.Params) < 1 || len(msg.Params[0]) < 2 {
 		irc.Log.Printf("Invalid BATCH command from server\n")
 		return
@@ -223,48 +229,92 @@ func (irc *Connection) handleBatchCommand(msg ircmsg.Message) {
 				err = errorDuplicateBatchID
 				return
 			}
-			batchObj := new(Batch)
-			batchObj.Message = msg
-			irc.batches[batchID] = batchInProgress{
+			currentBip := &batchInProgress{
 				createdAt: time.Now(),
-				batch:     batchObj,
-				label:     label,
+				batch: Batch{
+					Message: msg,
+				},
+				label: label,
 			}
 			if isNested {
-				parentBip := irc.batches[parentBatchID]
-				if parentBip.batch == nil {
+				parentBip, ok := irc.batches[parentBatchID]
+				if !ok {
 					err = errorNoParentBatchID
 					return
 				}
-				parentBip.batch.Items = append(parentBip.batch.Items, batchObj)
+				parentBip.batch.Items = append(parentBip.batch.Items, &currentBip.batch)
+				parentBip.openChildren += 1
+				currentBip.parent = parentBip
+				var rootBip *batchInProgress
+				if parentBip.root != nil {
+					// multiple levels of nesting, the root is the parent's root
+					rootBip = parentBip.root
+				} else {
+					// first level of nesting, the parent is the root
+					rootBip = parentBip
+				}
+				currentBip.root = rootBip
+				currentBip.depth = parentBip.depth + 1
+				if currentBip.depth >= maxBatchRecursionDepth {
+					err = errorMaxRecursionDepth
+					return
+				}
+				rootBip.size += len(rawMsg)
+			} else {
+				currentBip.size = len(rawMsg) // we are the root
 			}
+			// track total batch size for the whole forest
+			irc.totalBatchSize += len(rawMsg)
+			if irc.totalBatchSize > irc.MaxTotalBatchSize {
+				err = errorMaxTotalBatchSize
+				return
+			}
+			irc.batches[batchID] = currentBip
 		} else {
-			bip := irc.batches[batchID]
-			if bip.batch == nil {
+			bip, ok := irc.batches[batchID]
+			if !ok {
 				err = errorBatchNotOpen
 				return
 			}
+			if bip.openChildren != 0 {
+				err = errorInvalidBatchNesting // orphaned batch could result in data race
+				return
+			}
+			if bip.parent != nil {
+				// we ignore the nested batch tag and rely on our own record of who the parent is
+				bip.parent.openChildren -= 1
+			}
 			delete(irc.batches, batchID)
-			if !isNested {
-				finishedBatch = bip.batch
+			irc.totalBatchSize -= bip.size
+			if bip.root == nil {
+				finishedBatch = &bip.batch
 				if bip.label != 0 {
 					callback = irc.getLabelCallbackNoMutex(bip.label)
 					if callback == nil {
 						err = errorUnknownLabel
 					}
-
 				}
 			}
 		}
 		return
 	}()
 
-	if err != nil {
+	switch err {
+	case nil:
+		// success, fire callback
+		if callback != nil {
+			callback(finishedBatch)
+		} else if finishedBatch != nil {
+			irc.HandleBatch(finishedBatch)
+		} // else: we closed a nested batch, wait for the root to close
+		return nil
+	case errorMaxRecursionDepth, errorMaxTotalBatchSize, errorInvalidBatchNesting:
+		// these are fatal, tear down the connection and reset state
+		return err
+	default:
+		// non-fatal error, corrupt batch data but we can recover
 		irc.Log.Printf("batch error: %v (batchID=`%s`, parentBatchID=`%s`)", err, batchID, parentBatchID)
-	} else if callback != nil {
-		callback(finishedBatch)
-	} else if finishedBatch != nil {
-		irc.HandleBatch(finishedBatch)
+		return nil
 	}
 }
 
@@ -312,20 +362,30 @@ func (irc *Connection) handleBatchNaively(batch *Batch) {
 	}
 }
 
-func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string) {
+func (irc *Connection) handleBatchedCommand(msg ircmsg.Message, batchID string, rawMsg string) error {
 	irc.batchMutex.Lock()
 	defer irc.batchMutex.Unlock()
 
-	bip := irc.batches[batchID]
-	if bip.batch == nil {
+	bip, ok := irc.batches[batchID]
+	if !ok {
 		irc.Log.Printf("ignoring command with unknown batch ID %s\n", batchID)
-		return
+		return nil
+	}
+	if bip.root == nil {
+		bip.size += len(rawMsg)
+	} else {
+		bip.root.size += len(rawMsg)
+	}
+	irc.totalBatchSize += len(rawMsg)
+	if irc.totalBatchSize > irc.MaxTotalBatchSize {
+		return errorMaxTotalBatchSize
 	}
 	bip.batch.Items = append(bip.batch.Items, &Batch{Message: msg})
+	return nil
 }
 
 // Execute all callbacks associated with a given event.
-func (irc *Connection) runCallbacks(msg ircmsg.Message) {
+func (irc *Connection) runCallbacks(msg ircmsg.Message, rawMsg string) (fatalErr error) {
 	if !irc.AllowPanic {
 		defer irc.handleCallbackPanic()
 	}
@@ -333,11 +393,9 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 	// handle batch start or end
 	if irc.batchNegotiated() {
 		if msg.Command == "BATCH" {
-			irc.handleBatchCommand(msg)
-			return
+			return irc.handleBatchCommand(msg, rawMsg)
 		} else if hasBatchTag, batchID := msg.GetTag("batch"); hasBatchTag {
-			irc.handleBatchedCommand(msg, batchID)
-			return
+			return irc.handleBatchedCommand(msg, batchID, rawMsg)
 		}
 	}
 
@@ -350,18 +408,19 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message) {
 			}
 			if labelCallback == nil {
 				irc.Log.Printf("received unrecognized label from server: %s\n", labelStr)
-				return
+				return nil
 			} else {
 				labelCallback(&Batch{
 					Message: msg,
 				})
 			}
-			return
+			return nil
 		}
 	}
 
 	// OK, it's a normal IRC command
 	irc.HandleMessage(msg)
+	return nil
 }
 
 func (irc *Connection) handleCallbackPanic() {
@@ -674,11 +733,14 @@ func (irc *Connection) unregisterLabel(labelStr string) {
 	delete(irc.labelCallbacks, label)
 }
 
-// expire open batches from the server that weren't closed in a
-// timely fashion. `force` expires all label callbacks regardless
-// of time created (so they can be cleaned up when the connection
-// fails).
-func (irc *Connection) expireBatches(force bool) {
+// check for two kinds of server batch failure:
+//   - labeled responses that never arrived (this is not fatal)
+//   - server batches that were opened and never closed (this is fatal
+//     because it corrupts the batch tracking state)
+//
+// `force` expires all label callbacks regardless of time (so they
+// can be triggered when the connection fails for any reason).
+func (irc *Connection) expireBatches(force bool) (fatalErr error) {
 	var failedCallbacks []LabelCallback
 	defer func() {
 		for _, bcb := range failedCallbacks {
@@ -697,11 +759,13 @@ func (irc *Connection) expireBatches(force bool) {
 		}
 	}
 
-	for batchID, bip := range irc.batches {
+	for _, bip := range irc.batches {
 		if now.Sub(bip.createdAt) > irc.KeepAlive {
-			delete(irc.batches, batchID)
+			return errorBatchTimedOut
 		}
 	}
+
+	return nil
 }
 
 func splitCAPToken(token string) (name, value string) {
