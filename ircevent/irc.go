@@ -974,6 +974,7 @@ CAPLOOP:
 		if saslError == nil {
 			saslError = SASLFailed
 		}
+		irc.SendRaw("QUIT")
 		return saslError
 	}
 

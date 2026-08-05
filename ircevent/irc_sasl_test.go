@@ -106,3 +106,20 @@ func TestSASLFail(t *testing.T) {
 		t.Errorf("successfully connected with invalid password")
 	}
 }
+
+func TestSASLOptional(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", true)
+	irccon.Debug = true
+	irccon.UseTLS = true
+	irccon.SASLOptional = true
+	setSaslTestCreds(irccon, t)
+	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	// intentionally break the password
+	irccon.SASLPassword = irccon.SASLPassword + "_"
+	err := irccon.Connect()
+	if err != nil {
+		t.Errorf("unable to connect with invalid pasword, despite SASLOptional")
+	}
+	irccon.Quit()
+}

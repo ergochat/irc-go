@@ -2,7 +2,7 @@ package ircevent
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 
 	"github.com/ergochat/irc-go/ircmsg"
 	"github.com/ergochat/irc-go/ircutils"
@@ -54,15 +54,11 @@ func (irc *Connection) setupSASLCallbacks() {
 	})
 
 	irc.AddCallback(RPL_LOGGEDOUT, func(e ircmsg.Message) {
-		irc.SendRaw("CAP END")
-		irc.SendRaw("QUIT")
-		irc.submitSASLResult(saslResult{true, errors.New(e.Params[1])})
+		irc.submitSASLResult(saslResult{true, saslError(&e)})
 	})
 
 	irc.AddCallback(ERR_NICKLOCKED, func(e ircmsg.Message) {
-		irc.SendRaw("CAP END")
-		irc.SendRaw("QUIT")
-		irc.submitSASLResult(saslResult{true, errors.New(e.Params[1])})
+		irc.submitSASLResult(saslResult{true, saslError(&e)})
 	})
 
 	irc.AddCallback(RPL_SASLSUCCESS, func(e ircmsg.Message) {
@@ -70,13 +66,15 @@ func (irc *Connection) setupSASLCallbacks() {
 	})
 
 	irc.AddCallback(ERR_SASLFAIL, func(e ircmsg.Message) {
-		irc.SendRaw("CAP END")
-		irc.SendRaw("QUIT")
-		irc.submitSASLResult(saslResult{true, errors.New(e.Params[1])})
+		irc.submitSASLResult(saslResult{true, saslError(&e)})
 	})
 
 	// this could potentially happen with auto-login via certfp?
 	irc.AddCallback(ERR_SASLALREADY, func(e ircmsg.Message) {
 		irc.submitSASLResult(saslResult{false, nil})
 	})
+}
+
+func saslError(e *ircmsg.Message) error {
+	return fmt.Errorf("%s: %s", e.Command, lastParam(e))
 }
