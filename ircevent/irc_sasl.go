@@ -31,6 +31,7 @@ func (irc *Connection) submitSASLResult(r saslResult) {
 
 func (irc *Connection) composeSaslPlainResponse() []byte {
 	var buf bytes.Buffer
+	buf.Grow(2*len(irc.SASLLogin) + len(irc.SASLPassword) + 2)
 	buf.WriteString(irc.SASLLogin) // optional authzid, included for compatibility
 	buf.WriteByte('\x00')
 	buf.WriteString(irc.SASLLogin) // authcid
