@@ -595,7 +595,6 @@ func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
 	defer func() {
 		if requestUserhost {
 			// legacy fallback for learning the userhost
-			irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
 			irc.Send("WHO", currentNick)
 		}
 	}()

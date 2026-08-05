@@ -582,6 +582,8 @@ func (irc *Connection) setupCallbacks() {
 	// extensions for learning the user/host
 	irc.AddCallback("CHGHOST", irc.handleChghost)
 	irc.AddCallback("SETNAME", irc.handleSetname)
+	// legacy mechanism for learning the user/host
+	irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
 
 	if irc.FetchUserHost {
 		irc.AddConnectCallback(func(_ ircmsg.Message) {
