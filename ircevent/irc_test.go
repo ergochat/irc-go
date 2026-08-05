@@ -149,6 +149,7 @@ func TestIRCMaxMessageLength(t *testing.T) {
 	if msg == rcvdMsg {
 		t.Errorf("Successfully relayed message over MaxMessageLength() bytes: %d", len(msg))
 	}
+	irccon.Quit()
 }
 
 func TestConnection(t *testing.T) {
@@ -514,6 +515,64 @@ func TestGetReplyTarget(t *testing.T) {
 	assertEqual(irc.GetReplyTarget(mustParse("PRIVMSG :")), "")
 	// not a PRIVMSG
 	assertEqual(irc.GetReplyTarget(mustParse(":testnet.ergo.chat 371 shivaram :This is Ergo version 2.13.0.")), "")
+}
+
+func TestAddRawCallback(t *testing.T) {
+	ircnick1 := randStr(8)
+	irccon := connForTesting(ircnick1, "go-eventirc", false)
+	debugTest(irccon)
+	commandsSeen := make(map[string]bool)
+	var linesSeen []string
+	id := irccon.AddRawCallback(func(raw string, msg ircmsg.Message, err error) {
+		if err == nil {
+			commandsSeen[msg.Command] = true
+
+			msg2, err2 := ircmsg.ParseLine(raw)
+			assertEqual(err2, nil)
+			assertEqual(msg.Command, msg2.Command)
+			assertEqual(msg.Params, msg2.Params)
+		} else {
+			t.Errorf("bad line from IRC server: `%s`: %v", raw, err)
+		}
+		linesSeen = append(linesSeen, raw)
+	})
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
+		irccon.Join("#ircevent-test")
+	})
+	irccon.AddCallback("JOIN", func(e ircmsg.Message) {
+		irccon.RemoveCallback(id)
+	})
+	seenRplNamreply := false
+	irccon.AddCallback(RPL_NAMREPLY, func(e ircmsg.Message) {
+		seenRplNamreply = true
+		irccon.Quit()
+	})
+	err := irccon.Connect()
+	if err != nil {
+		t.Log(err.Error())
+		t.Errorf("Can't connect to testing ircd.")
+	}
+	// wait for QUIT to be processed
+	irccon.Loop()
+
+	assertEqual(commandsSeen["001"], true)
+	assertEqual(commandsSeen["002"], true)
+	assertEqual(commandsSeen["003"], true)
+	assertEqual(commandsSeen["004"], true)
+	assertEqual(commandsSeen["005"], true)
+	// we removed the raw callback during the JOIN handler;
+	// whether we observe JOIN itself is undefined by the API,
+	// but we should not observe any of the other JOIN-related commands
+	assertEqual(commandsSeen[RPL_NAMREPLY], false)
+	assertEqual(commandsSeen[RPL_TOPIC], false)
+	assertEqual(commandsSeen[RPL_TOPICTIME], false)
+	assertEqual(commandsSeen["QUIT"], false)
+	// RPL_NAMREPLY should have been observed by the normal command handler:
+	assertEqual(seenRplNamreply, true)
+
+	if len(linesSeen) < 10 {
+		t.Errorf("insufficient raw lines observed: %#v", linesSeen)
+	}
 }
 
 const (

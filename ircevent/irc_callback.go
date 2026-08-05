@@ -17,6 +17,7 @@ const (
 	// fake events that we manage specially
 	registrationEvent = "\x00REGISTRATION"
 	disconnectEvent   = "\x00DISCONNECT"
+	rawEvent          = "\x00RAW"
 )
 
 // Tuple type for uniquely identifying callbacks
@@ -75,6 +76,8 @@ func (irc *Connection) RemoveCallback(id CallbackID) {
 	case registrationEvent:
 		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
 		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
+	case rawEvent:
+		irc.removeRawCallbackNoMutex(id.id)
 	case "BATCH":
 		irc.removeBatchCallbackNoMutex(id.id)
 	default:
@@ -151,6 +154,42 @@ func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
 		}
 	}
 	irc.batchCallbacks = newList
+}
+
+// AddRawCallback adds a callback that will be invoked for every IRC line
+// sent from the server, including lines that fail to parse. Raw callbacks
+// are executed after normal callbacks, but before batch callbacks (since
+// they do not respect batch buffering). The first argument to the callback
+// is the original IRC line as a string, without the terminating \r\n.
+// If the line is valid, the second argument is the parsed ircmsg.Message
+// and the third argument is nil; if it is invalid, the second argument has
+// an undefined value and the third argument is the parse error. Raw callbacks
+// can be removed as usual with RemoveCallback.
+func (irc *Connection) AddRawCallback(callback func(string, ircmsg.Message, error)) CallbackID {
+	irc.eventsMutex.Lock()
+	defer irc.eventsMutex.Unlock()
+
+	idNum := irc.callbackCounter
+	irc.callbackCounter++
+	nbc := make([]rawCallbackPair, len(irc.rawCallbacks)+1)
+	copy(nbc, irc.rawCallbacks)
+	nbc[len(nbc)-1] = rawCallbackPair{id: idNum, callback: callback}
+	irc.rawCallbacks = nbc
+	return CallbackID{command: rawEvent, id: idNum}
+}
+
+func (irc *Connection) removeRawCallbackNoMutex(idNum uint64) {
+	current := irc.rawCallbacks
+	if len(current) == 0 {
+		return
+	}
+	newList := make([]rawCallbackPair, 0, len(current)-1)
+	for _, p := range current {
+		if p.id != idNum {
+			newList = append(newList, p)
+		}
+	}
+	irc.rawCallbacks = newList
 }
 
 // Convenience function to add a callback that will be called once the
@@ -420,6 +459,29 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message, rawMsg string) (fatalErr
 	// OK, it's a normal IRC command
 	irc.HandleMessage(msg)
 	return nil
+}
+
+func (irc *Connection) runRawCallbacks(msg string, parsedMsg ircmsg.Message, err error) {
+	irc.eventsMutex.Lock()
+	rawCallbacks := irc.rawCallbacks
+	irc.eventsMutex.Unlock()
+
+	if len(rawCallbacks) == 0 {
+		return
+	}
+
+	if !irc.AllowPanic {
+		defer irc.handleCallbackPanic()
+	}
+
+	for _, callbackPair := range rawCallbacks {
+		if err == nil {
+			callbackPair.callback(msg, parsedMsg, err)
+		} else {
+			// make it obvious if they're not checking err
+			callbackPair.callback(msg, ircmsg.Message{}, err)
+		}
+	}
 }
 
 func (irc *Connection) handleCallbackPanic() {

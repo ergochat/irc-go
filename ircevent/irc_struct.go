@@ -35,6 +35,13 @@ type batchCallbackPair struct {
 
 type LabelCallback func(*Batch)
 
+type RawCallback func(string, ircmsg.Message, error)
+
+type rawCallbackPair struct {
+	id       uint64
+	callback RawCallback
+}
+
 type capResult struct {
 	capName string
 	ack     bool
@@ -111,6 +118,7 @@ type Connection struct {
 	callbackCounter uint64
 	// did we initialize the callbacks needed for the library itself?
 	batchCallbacks   []batchCallbackPair
+	rawCallbacks     []rawCallbackPair
 	hasBaseCallbacks bool
 
 	batchMutex     sync.Mutex
