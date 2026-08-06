@@ -3,6 +3,7 @@ package ircevent
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 
@@ -32,12 +33,19 @@ func getenv(key, defaultValue string) (value string) {
 	return
 }
 
-func getServer(sasl bool) string {
-	port := 6667
-	if sasl {
-		port = 6697
+func getServer(tls bool) string {
+	server := getenv(serverEnvVar, "localhost")
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		host = server
 	}
-	return fmt.Sprintf("%s:%d", getenv(serverEnvVar, "localhost"), port)
+	// unconditionally override port
+	if tls {
+		port = "6697"
+	} else {
+		port = "6667"
+	}
+	return fmt.Sprintf("%s:%s", host, port)
 }
 
 // set SASLLogin and SASLPassword environment variables before testing
