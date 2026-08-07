@@ -582,6 +582,8 @@ func (irc *Connection) setupCallbacks() {
 	// extensions for learning the user/host
 	irc.AddCallback("CHGHOST", irc.handleChghost)
 	irc.AddCallback("SETNAME", irc.handleSetname)
+	// legacy mechanism for learning the user/host
+	irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
 
 	if irc.FetchUserHost {
 		irc.AddConnectCallback(func(_ ircmsg.Message) {
@@ -720,10 +722,15 @@ func unescapeISupportValue(in string) (out string) {
 	for i := 0; i < len(in); {
 		if in[i] == '\\' && i+3 < len(in) && in[i+1] == 'x' {
 			hex := in[i+2 : i+4]
-			if octet, err := strconv.ParseInt(hex, 16, 8); err == nil {
-				buf.WriteByte(byte(octet))
-				i += 4
-				continue
+			// the Modern docs say that backslash, space, and equals are the only permitted escapes;
+			// let's throw in comma because a literal comma is the list delimiter
+			if unescaped, err := strconv.ParseUint(hex, 16, 8); err == nil {
+				octet := byte(unescaped)
+				if octet == '\\' || octet == ' ' || octet == '=' || octet == ',' {
+					buf.WriteByte(octet)
+					i += 4
+					continue
+				}
 			}
 		}
 		buf.WriteByte(in[i])

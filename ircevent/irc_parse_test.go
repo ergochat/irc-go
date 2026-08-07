@@ -35,4 +35,12 @@ func TestUnescapeIsupport(t *testing.T) {
 	assertEqual(unescapeISupportValue(`a\x20`), "a ")
 	assertEqual(unescapeISupportValue(`a\x20b`), "a b")
 	assertEqual(unescapeISupportValue(`\x20\x20`), "  ")
+	assertEqual(unescapeISupportValue(`a\x3db`), "a=b")
+	assertEqual(unescapeISupportValue(`a\x3Db`), "a=b")
+	assertEqual(unescapeISupportValue(`a\x5cb`), "a\\b")
+	assertEqual(unescapeISupportValue(`a\x5Cb`), "a\\b")
+	assertEqual(unescapeISupportValue(`a\x2cb`), "a,b")
+	assertEqual(unescapeISupportValue(`a\x2Cb`), "a,b")
+	// invalid escapes are ignored:
+	assertEqual(unescapeISupportValue(`a\xffb`), `a\xffb`)
 }

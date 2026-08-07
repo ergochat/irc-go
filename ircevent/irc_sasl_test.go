@@ -3,6 +3,7 @@ package ircevent
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 
@@ -32,12 +33,19 @@ func getenv(key, defaultValue string) (value string) {
 	return
 }
 
-func getServer(sasl bool) string {
-	port := 6667
-	if sasl {
-		port = 6697
+func getServer(tls bool) string {
+	server := getenv(serverEnvVar, "localhost")
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		host = server
 	}
-	return fmt.Sprintf("%s:%d", getenv(serverEnvVar, "localhost"), port)
+	// unconditionally override port
+	if tls {
+		port = "6697"
+	} else {
+		port = "6667"
+	}
+	return fmt.Sprintf("%s:%s", host, port)
 }
 
 // set SASLLogin and SASLPassword environment variables before testing
@@ -105,4 +113,21 @@ func TestSASLFail(t *testing.T) {
 	if err == nil {
 		t.Errorf("successfully connected with invalid password")
 	}
+}
+
+func TestSASLOptional(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", true)
+	irccon.Debug = true
+	irccon.UseTLS = true
+	irccon.SASLOptional = true
+	setSaslTestCreds(irccon, t)
+	irccon.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	// intentionally break the password
+	irccon.SASLPassword = irccon.SASLPassword + "_"
+	err := irccon.Connect()
+	if err != nil {
+		t.Errorf("unable to connect with invalid pasword, despite SASLOptional")
+	}
+	irccon.Quit()
 }
