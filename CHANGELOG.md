@@ -11,7 +11,7 @@ irc-go v0.7.0 is a new tagged release. It includes enhancements to `ircevent`, o
 * Added `(*ircevent.Connection).AddRawCallback`, an API for adding callbacks that take in the unparsed IRC line, without filtering on the command. This can be used to implement programmatic debug logs, or catch-all handling of otherwise unhandled commands. (#76, #116, thanks [@jcjordyn130](https://github.com/jcjordyn130)!)
 
 ### Security
-* `ircevent` is now more resilient to malicious `BATCH` responses from servers, including excessively large or deep batches (#118, #122)
+* `ircevent` is now more resilient to malicious `BATCH` responses from servers, including excessively large or deep batches. `(*ircevent.Connection).MaxTotalBatchSize` was added to limit the total size of buffered batch data; it defaults to 8 MiB when unset. (#118, #122)
 
 ### Changed
 * Shortened the timeout for `GetLabeledResponse` (now approximately 1 minute by default) (#124)
