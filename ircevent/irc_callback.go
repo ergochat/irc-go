@@ -17,6 +17,7 @@ const (
 	// fake events that we manage specially
 	registrationEvent = "\x00REGISTRATION"
 	disconnectEvent   = "\x00DISCONNECT"
+	rawEvent          = "\x00RAW"
 )
 
 // Tuple type for uniquely identifying callbacks
@@ -75,6 +76,8 @@ func (irc *Connection) RemoveCallback(id CallbackID) {
 	case registrationEvent:
 		irc.removeCallbackNoMutex(RPL_ENDOFMOTD, id.id)
 		irc.removeCallbackNoMutex(ERR_NOMOTD, id.id)
+	case rawEvent:
+		irc.removeRawCallbackNoMutex(id.id)
 	case "BATCH":
 		irc.removeBatchCallbackNoMutex(id.id)
 	default:
@@ -153,6 +156,42 @@ func (irc *Connection) removeBatchCallbackNoMutex(idNum uint64) {
 	irc.batchCallbacks = newList
 }
 
+// AddRawCallback adds a callback that will be invoked for every IRC line
+// sent from the server, including lines that fail to parse. Raw callbacks
+// are executed after normal callbacks, but before batch callbacks (since
+// they do not respect batch buffering). The first argument to the callback
+// is the original IRC line as a string, without the terminating \r\n.
+// If the line is valid, the second argument is the parsed ircmsg.Message
+// and the third argument is nil; if it is invalid, the second argument has
+// an undefined value and the third argument is the parse error. Raw callbacks
+// can be removed as usual with RemoveCallback.
+func (irc *Connection) AddRawCallback(callback func(string, ircmsg.Message, error)) CallbackID {
+	irc.eventsMutex.Lock()
+	defer irc.eventsMutex.Unlock()
+
+	idNum := irc.callbackCounter
+	irc.callbackCounter++
+	nbc := make([]rawCallbackPair, len(irc.rawCallbacks)+1)
+	copy(nbc, irc.rawCallbacks)
+	nbc[len(nbc)-1] = rawCallbackPair{id: idNum, callback: callback}
+	irc.rawCallbacks = nbc
+	return CallbackID{command: rawEvent, id: idNum}
+}
+
+func (irc *Connection) removeRawCallbackNoMutex(idNum uint64) {
+	current := irc.rawCallbacks
+	if len(current) == 0 {
+		return
+	}
+	newList := make([]rawCallbackPair, 0, len(current)-1)
+	for _, p := range current {
+		if p.id != idNum {
+			newList = append(newList, p)
+		}
+	}
+	irc.rawCallbacks = newList
+}
+
 // Convenience function to add a callback that will be called once the
 // connection is completed (this is traditionally referred to as "connection
 // registration").
@@ -197,7 +236,6 @@ var (
 	errorMaxRecursionDepth   = errors.New("maximum batch nesting depth exceeded")
 	errorMaxTotalBatchSize   = errors.New("maximum total batched data exceeded limit")
 	errorInvalidBatchNesting = errors.New("invalid batch nesting detected")
-	errorBatchTimedOut       = errors.New("server opened a batch and didn't close it")
 )
 
 func (irc *Connection) handleBatchCommand(msg ircmsg.Message, rawMsg string) (fatalErr error) {
@@ -423,6 +461,29 @@ func (irc *Connection) runCallbacks(msg ircmsg.Message, rawMsg string) (fatalErr
 	return nil
 }
 
+func (irc *Connection) runRawCallbacks(msg string, parsedMsg ircmsg.Message, err error) {
+	irc.eventsMutex.Lock()
+	rawCallbacks := irc.rawCallbacks
+	irc.eventsMutex.Unlock()
+
+	if len(rawCallbacks) == 0 {
+		return
+	}
+
+	if !irc.AllowPanic {
+		defer irc.handleCallbackPanic()
+	}
+
+	for _, callbackPair := range rawCallbacks {
+		if err == nil {
+			callbackPair.callback(msg, parsedMsg, err)
+		} else {
+			// make it obvious if they're not checking err
+			callbackPair.callback(msg, ircmsg.Message{}, err)
+		}
+	}
+}
+
 func (irc *Connection) handleCallbackPanic() {
 	if r := recover(); r != nil {
 		irc.Log.Printf("Caught panic in callback: %v\n%s", r, debug.Stack())
@@ -512,6 +573,8 @@ func (irc *Connection) setupCallbacks() {
 	// extensions for learning the user/host
 	irc.AddCallback("CHGHOST", irc.handleChghost)
 	irc.AddCallback("SETNAME", irc.handleSetname)
+	// legacy mechanism for learning the user/host
+	irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
 
 	if irc.FetchUserHost {
 		irc.AddConnectCallback(func(_ ircmsg.Message) {
@@ -650,10 +713,15 @@ func unescapeISupportValue(in string) (out string) {
 	for i := 0; i < len(in); {
 		if in[i] == '\\' && i+3 < len(in) && in[i+1] == 'x' {
 			hex := in[i+2 : i+4]
-			if octet, err := strconv.ParseInt(hex, 16, 8); err == nil {
-				buf.WriteByte(byte(octet))
-				i += 4
-				continue
+			// the Modern docs say that backslash, space, and equals are the only permitted escapes;
+			// let's throw in comma because a literal comma is the list delimiter
+			if unescaped, err := strconv.ParseUint(hex, 16, 8); err == nil {
+				octet := byte(unescaped)
+				if octet == '\\' || octet == ' ' || octet == '=' || octet == ',' {
+					buf.WriteByte(octet)
+					i += 4
+					continue
+				}
 			}
 		}
 		buf.WriteByte(in[i])
@@ -733,14 +801,8 @@ func (irc *Connection) unregisterLabel(labelStr string) {
 	delete(irc.labelCallbacks, label)
 }
 
-// check for two kinds of server batch failure:
-//   - labeled responses that never arrived (this is not fatal)
-//   - server batches that were opened and never closed (this is fatal
-//     because it corrupts the batch tracking state)
-//
-// `force` expires all label callbacks regardless of time (so they
-// can be triggered when the connection fails for any reason).
-func (irc *Connection) expireBatches(force bool) (fatalErr error) {
+// periodic task to expire labeled responses that never arrived
+func (irc *Connection) expireBatches(force bool) {
 	var failedCallbacks []LabelCallback
 	defer func() {
 		for _, bcb := range failedCallbacks {
@@ -753,19 +815,11 @@ func (irc *Connection) expireBatches(force bool) (fatalErr error) {
 	now := time.Now()
 
 	for label, lcb := range irc.labelCallbacks {
-		if force || now.Sub(lcb.createdAt) > irc.KeepAlive {
+		if force || now.Sub(lcb.createdAt) > irc.Timeout {
 			failedCallbacks = append(failedCallbacks, lcb.callback)
 			delete(irc.labelCallbacks, label)
 		}
 	}
-
-	for _, bip := range irc.batches {
-		if now.Sub(bip.createdAt) > irc.KeepAlive {
-			return errorBatchTimedOut
-		}
-	}
-
-	return nil
 }
 
 func splitCAPToken(token string) (name, value string) {

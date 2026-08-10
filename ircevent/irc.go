@@ -142,16 +142,14 @@ func (irc *Connection) readLoop() {
 			} else {
 				irc.Log.Printf("invalid message from server: %v\n", err)
 			}
+			irc.runRawCallbacks(msg, parsedMsg, err)
 		case err := <-errChan:
 			irc.setError(err)
 			return
 		}
 
 		if irc.batchNegotiated() && time.Since(lastExpireCheck) > irc.Timeout {
-			if fatalErr := irc.expireBatches(false); fatalErr != nil {
-				irc.setError(fatalErr)
-				return
-			}
+			irc.expireBatches(false)
 			lastExpireCheck = time.Now()
 		}
 	}
@@ -649,7 +647,6 @@ func (irc *Connection) getOrRequestUserHost() (currentNick, userHost string) {
 	defer func() {
 		if requestUserhost {
 			// legacy fallback for learning the userhost
-			irc.AddCallback(RPL_WHOREPLY, irc.handleRplWhoReply)
 			irc.Send("WHO", currentNick)
 		}
 	}()
@@ -1076,6 +1073,7 @@ CAPLOOP:
 		if saslError == nil {
 			saslError = SASLFailed
 		}
+		irc.SendRaw("QUIT")
 		return saslError
 	}
 
