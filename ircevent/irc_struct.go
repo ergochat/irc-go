@@ -47,14 +47,25 @@ type capResult struct {
 	ack     bool
 }
 
+// ConnectionState represents the current state of the IRC connection.
 type ConnectionState uint
 
 const (
+	// ConnectionNotStarted is the state of a connection before the initial Connect() call.
 	ConnectionNotStarted ConnectionState = iota
+	// ConnectionConnecting is the state of a connection currently connecting, or reconnecting,
+	// to the IRC server.
 	ConnectionConnecting
+	// ConnectionActive is the state of a connection actively connected to the IRC server,
+	// ready to send and receive messages.
 	ConnectionActive
+	// ConnectionSleeping is the state of a connection pausing in between reconnect attempts.
 	ConnectionSleeping
+	// ConnectionStopping is the state of a connection after Quit() was called, but before
+	// shutdown is complete.
 	ConnectionStopping
+	// ConnectionStopped is the state of a connection after Quit() was called and shutdown
+	// has completed.
 	ConnectionStopped
 )
 

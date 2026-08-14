@@ -1,8 +1,11 @@
 package ircevent
 
 import (
+	"context"
 	"crypto/tls"
-	"math/rand"
+	"errors"
+	"math/rand/v2"
+	"net"
 	"sort"
 	"strings"
 	"testing"
@@ -94,6 +97,7 @@ func TestIRCMaxMessageLength(t *testing.T) {
 	irccon := connForTesting(ircnick1, "go-eventirc", false)
 	debugTest(irccon)
 	irccon.FetchUserHost = true
+	irccon.RequestCaps = []string{"message-tags", "batch", "labeled-response"}
 	gotUserhost := make(chan struct{})
 	done := make(chan struct{})
 	irccon.AddCallback(RPL_WHOREPLY, func(e ircmsg.Message) {
@@ -123,8 +127,12 @@ func TestIRCMaxMessageLength(t *testing.T) {
 		t.Errorf("Can't connect to testing ircd.")
 	}
 	<-gotUserhost
+	// XXX *even more* synchronization because as an implementation detail, our RPL_WHOREPLY
+	// callback executes before the library's
+	irccon.GetLabeledResponse(nil, "PING", "synchronize")
 	// now MaxMessageLength should return the real upper bound
 	maxMsgByteLen := irccon.MaxMessageLength(ircnick1)
+	t.Logf("got MaxMessageLength=%d\n", maxMsgByteLen)
 	msg := randStr(maxMsgByteLen)
 	err = irccon.Privmsg(ircnick1, msg)
 	if err != nil {
@@ -150,10 +158,10 @@ func TestIRCMaxMessageLength(t *testing.T) {
 		t.Errorf("Successfully relayed message over MaxMessageLength() bytes: %d", len(msg))
 	}
 	irccon.Quit()
+	irccon.Wait()
 }
 
 func TestConnection(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick1 := randStr(8)
 	ircnick2 := randStr(8)
 	ircnick2orig := ircnick2
@@ -290,7 +298,6 @@ func TestConnectionSSL(t *testing.T) {
 
 	irccon.AddCallback("366", func(e ircmsg.Message) {
 		irccon.Privmsg(channel, "Test Message from SSL")
-		irccon.Quit()
 	})
 
 	err := irccon.Connect()
@@ -299,6 +306,7 @@ func TestConnectionSSL(t *testing.T) {
 		t.Errorf("Can't connect to freenode.")
 	}
 
+	irccon.Quit()
 	irccon.Loop()
 }
 
@@ -306,7 +314,7 @@ func TestConnectionSSL(t *testing.T) {
 func randStr(n int) string {
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = dict[rand.Intn(len(dict))]
+		b[i] = dict[rand.IntN(len(dict))]
 	}
 	return string(b)
 }
@@ -331,7 +339,6 @@ func compareResults(received []int, desired ...int) bool {
 }
 
 func TestConnectionNickInUse(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick := randStr(8)
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 
@@ -373,7 +380,6 @@ func TestConnectionNickInUse(t *testing.T) {
 }
 
 func TestConnectionCallbacks(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick := randStr(8)
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 	debugTest(irccon1)
@@ -439,7 +445,6 @@ func TestCAPHandling(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rand.Seed(time.Now().UnixNano())
 			ircnick := randStr(8)
 			irccon1 := connForTesting(ircnick, "IRCTest1", false)
 			irccon1.RequestCaps = tc.caps
@@ -523,6 +528,7 @@ func TestAddRawCallback(t *testing.T) {
 	debugTest(irccon)
 	commandsSeen := make(map[string]bool)
 	var linesSeen []string
+	closeEvent := make(chan struct{})
 	id := irccon.AddRawCallback(func(raw string, msg ircmsg.Message, err error) {
 		if err == nil {
 			commandsSeen[msg.Command] = true
@@ -545,13 +551,15 @@ func TestAddRawCallback(t *testing.T) {
 	seenRplNamreply := false
 	irccon.AddCallback(RPL_NAMREPLY, func(e ircmsg.Message) {
 		seenRplNamreply = true
-		irccon.Quit()
+		close(closeEvent)
 	})
 	err := irccon.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to testing ircd.")
 	}
+	<-closeEvent
+	irccon.Quit()
 	// wait for QUIT to be processed
 	irccon.Loop()
 
@@ -581,8 +589,6 @@ const (
 )
 
 func TestClientBatch(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-
 	// returns a batch callback that saves the message to a string
 	recvMultiline := func(target *string) BatchCallback {
 		return func(b *Batch) bool {
@@ -653,4 +659,98 @@ func TestClientBatch(t *testing.T) {
 
 	assertEqual(irccon1.totalBatchSize, 0)
 	assertEqual(irccon2.totalBatchSize, 0)
+}
+
+func TestConnectDialFailure(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	dialFail := true
+	dialErr := errors.New("simulated dial failure")
+	var defaultDialer net.Dialer
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if dialFail {
+			return nil, dialErr
+		} else {
+			return defaultDialer.DialContext(ctx, network, addr)
+		}
+	}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err != dialErr {
+		t.Errorf("did not receive expected dial error: %v", err)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+
+	dialFail = false
+	err = irccon.Connect()
+	if err != nil {
+		t.Errorf("could not redial after first unsuccessful dial: %v", err)
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestConnectLayer7Failure(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	// ergo poison cap, causes disconnection when requested
+	irccon.RequestCaps = []string{"ergo.chat/nope"}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("did not receive expected dial error: %v", err)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+
+	irccon.RequestCaps = []string{"message-tags", "server-time", "batch", "labeled-response", "echo-message", "account-tag"}
+	err = irccon.Connect()
+	if err != nil {
+		t.Errorf("could not redial after first unsuccessful dial: %v", err)
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestConnectAfterQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err != nil {
+		t.Errorf("unable to connect")
+	}
+	assertEqual(irccon.State(), ConnectionActive)
+	assertEqual(irccon.Connect(), connectionAlreadyActive)
+	irccon.Quit()
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+	assertEqual(irccon.Connect(), ClientHasQuit)
+}
+
+func TestConcurrentConnectAndQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.AddConnectCallback(func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	connectEvent := make(chan struct{})
+	var connectErr error
+	go func() {
+		connectErr = irccon.Connect()
+		close(connectEvent)
+	}()
+	go func() {
+		irccon.Quit()
+	}()
+	<-connectEvent
+	switch connectErr {
+	case ClientHasQuit, ServerDisconnected:
+		// this is OK, Quit() won the race against Connect()
+		assertEqual(irccon.State(), ConnectionStopped)
+	case nil:
+		// this is OK, Connect() won the race, wait for stop
+		irccon.Wait()
+	default:
+		t.Errorf("Unexpected error from Connect(): %v", connectErr)
+	}
 }

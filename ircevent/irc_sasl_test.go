@@ -62,13 +62,13 @@ func runCAPTest(caps []string, useSASL bool, t *testing.T) {
 
 	irccon.AddCallback("366", func(e ircmsg.Message) {
 		irccon.Privmsg("#go-eventirc", "Test Message SASL")
-		irccon.Quit()
 	})
 
 	err := irccon.Connect()
 	if err != nil {
 		t.Fatalf("SASL failed: %s", err)
 	}
+	irccon.Quit()
 	irccon.Loop()
 }
 
@@ -113,6 +113,7 @@ func TestSASLFail(t *testing.T) {
 	if err == nil {
 		t.Errorf("successfully connected with invalid password")
 	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
 }
 
 func TestSASLOptional(t *testing.T) {

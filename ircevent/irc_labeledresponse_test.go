@@ -21,22 +21,21 @@ func TestLabeledResponse(t *testing.T) {
 	irccon.RequestCaps = []string{"message-tags", "batch", "labeled-response"}
 	irccon.RealName = "ecf61da38b58"
 	results := make(map[string]string)
-	irccon.AddConnectCallback(func(e ircmsg.Message) {
-		irccon.SendWithLabel(func(batch *Batch) {
-			if batch == nil {
-				return
-			}
-			for _, line := range batch.Items {
-				results[line.Command] = line.Params[len(line.Params)-1]
-			}
-			irccon.Quit()
-		}, nil, "WHOIS", irccon.CurrentNick())
-	})
 	err := irccon.Connect()
 	if err != nil {
 		t.Fatalf("labeled response connection failed: %s", err)
 	}
-	irccon.Loop()
+	irccon.SendWithLabel(func(batch *Batch) {
+		if batch == nil {
+			return
+		}
+		for _, line := range batch.Items {
+			results[line.Command] = line.Params[len(line.Params)-1]
+		}
+		irccon.Quit()
+	}, nil, "WHOIS", irccon.CurrentNick())
+
+	irccon.Wait()
 
 	// RPL_WHOISUSER, last param is the realname
 	assertEqual(results["311"], "ecf61da38b58")
@@ -287,7 +286,6 @@ func TestSynchronousLabeledResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("labeled response connection failed: %s", err)
 	}
-	go irccon.Loop()
 
 	batch, err := irccon.GetLabeledResponse(nil, "WHOIS", irccon.CurrentNick())
 	if err != nil {
@@ -305,4 +303,7 @@ func TestSynchronousLabeledResponse(t *testing.T) {
 		t.Errorf("Expected 379 RPL_WHOISMODES in response, but not received")
 	}
 	assertEqual(len(irccon.batches), 0)
+
+	irccon.Quit()
+	irccon.Wait()
 }
