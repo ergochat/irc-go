@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"math/rand/v2"
+	"math/rand"
 	"net"
 	"sort"
 	"strings"
@@ -239,7 +239,7 @@ func TestConnection(t *testing.T) {
 	irccon1.Loop()
 }
 
-func runReconnectTest(useSASL bool, t *testing.T) {
+func runReconnectTest(useSASL bool, graceful bool, t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "IRCTestRe", false)
 	irccon.ReconnectFreq = time.Second * 1
@@ -258,10 +258,18 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 			go irccon.Quit()
 		} else {
 			irccon.Privmsgf(channel, "Connection nr %d", connects)
-			// XXX: wait for the message to actually send before we hang up
-			// (can this be avoided?)
-			time.Sleep(100 * time.Millisecond)
-			go irccon.Reconnect()
+			go func() {
+				// XXX: wait for the message to actually send before we hang up
+				// (can this be avoided?)
+				time.Sleep(100 * time.Millisecond)
+				if graceful {
+					irccon.Reconnect()
+				} else {
+					// cause the server to disconnect us unilaterally,
+					// without triggering ConnectionStopping locally
+					irccon.Send("QUIT")
+				}
+			}()
 		}
 	})
 
@@ -278,11 +286,19 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 }
 
 func TestReconnect(t *testing.T) {
-	runReconnectTest(false, t)
+	runReconnectTest(false, true, t)
 }
 
 func TestReconnectWithSASL(t *testing.T) {
-	runReconnectTest(true, t)
+	runReconnectTest(true, true, t)
+}
+
+func TestReconnectOnFailure(t *testing.T) {
+	runReconnectTest(false, false, t)
+}
+
+func TestReconnectWithSASLOnFailure(t *testing.T) {
+	runReconnectTest(true, false, t)
 }
 
 func TestConnectionSSL(t *testing.T) {
@@ -314,7 +330,7 @@ func TestConnectionSSL(t *testing.T) {
 func randStr(n int) string {
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = dict[rand.IntN(len(dict))]
+		b[i] = dict[rand.Intn(len(dict))]
 	}
 	return string(b)
 }
@@ -735,12 +751,14 @@ func TestConcurrentConnectAndQuit(t *testing.T) {
 	assertEqual(irccon.State(), ConnectionNotStarted)
 	connectEvent := make(chan struct{})
 	var connectErr error
+	quitComplete := make(chan struct{})
 	go func() {
 		connectErr = irccon.Connect()
 		close(connectEvent)
 	}()
 	go func() {
 		irccon.Quit()
+		close(quitComplete)
 	}()
 	<-connectEvent
 	switch connectErr {
@@ -750,6 +768,8 @@ func TestConcurrentConnectAndQuit(t *testing.T) {
 	case nil:
 		// this is OK, Connect() won the race, wait for stop
 		irccon.Wait()
+		assertEqual(irccon.State(), ConnectionStopped)
+		<-quitComplete
 	default:
 		t.Errorf("Unexpected error from Connect(): %v", connectErr)
 	}

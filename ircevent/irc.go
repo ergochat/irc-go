@@ -280,6 +280,7 @@ func (irc *Connection) isQuitting() bool {
 }
 
 // Wait blocks until the IRC connection has been stopped intentionally, via Quit().
+// Calls to Wait() are only valid after an initial Connect() call has succeeded.
 func (irc *Connection) Wait() {
 	<-irc.quitEvent
 }
@@ -317,7 +318,16 @@ func (irc *Connection) maintenanceLoop() {
 			select {
 			case <-t.C:
 			case <-irc.reconnSig:
+				if irc.Debug {
+					irc.Log.Printf("Sleep between reconnect attempts interrupted")
+				}
 				t.Stop()
+			}
+		} else {
+			// drain any buffered Reconnect() request even if there was no delay
+			select {
+			case <-irc.reconnSig:
+			default:
 			}
 		}
 
@@ -416,7 +426,7 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	pwrite := irc.pwrite
 	irc.stateMutex.Unlock()
 
-	if state == ConnectionNotStarted || state == ConnectionStopped {
+	if state == ConnectionNotStarted || state == ConnectionStopped || pwrite == nil {
 		return ClientDisconnected
 	}
 
@@ -753,8 +763,7 @@ func (irc *Connection) Reconnect() {
 	// halt any existing connection:
 	irc.closeEnd()
 
-	// wake up maintenanceLoop if necessary;
-	// we know reconnSig is initialized because we checked ConnectionNotStarted above
+	// wake up maintenanceLoop if necessary
 	select {
 	case irc.reconnSig <- empty{}:
 	default:
@@ -807,8 +816,11 @@ func (irc *Connection) dial() (socket net.Conn, err error) {
 }
 
 func (irc *Connection) performConfigNormalization() error {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
 	// these are initialized only once in the lifetime of the Connection object:
-	irc.reconnSig = make(chan empty)
+	irc.reconnSig = make(chan empty, 1)
 	irc.quitEvent = make(chan empty)
 
 	if irc.Server == "" {
@@ -873,17 +885,15 @@ func (irc *Connection) performConfigNormalization() error {
 		irc.DialContext = (&net.Dialer{}).DialContext
 	}
 
-	// add default callbacks
-	irc.setupCallbacks()
-
 	return nil
 }
 
 func (irc *Connection) normalizeConfig() error {
 	irc.normalizeOnce.Do(func() {
-		irc.stateMutex.Lock()
-		defer irc.stateMutex.Unlock()
 		irc.normalizeErr = irc.performConfigNormalization()
+		if irc.normalizeErr == nil {
+			irc.setupCallbacks()
+		}
 	})
 	return irc.normalizeErr
 }
