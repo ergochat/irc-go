@@ -372,8 +372,9 @@ func (irc *Connection) State() ConnectionState {
 	return irc.connectionState
 }
 
-// Quit the current connection and disconnect from the server
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.6
+// Quit starts the process of disconnecting from the IRC server,
+// typically by sending the QUIT command. It returns immediately;
+// use Wait() to block until the connection is fully stopped.
 func (irc *Connection) Quit() {
 	success := func() bool {
 		irc.stateMutex.Lock()
@@ -424,6 +425,8 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	pwrite := irc.pwrite
 	irc.stateMutex.Unlock()
 
+	// XXX edge case: pwrite and end can both be nil during ConnectionConnecting
+	// of the first Connect() (during the dial, before the socket is open)
 	if state == ConnectionNotStarted || state == ConnectionStopped || pwrite == nil {
 		return ClientDisconnected
 	}
