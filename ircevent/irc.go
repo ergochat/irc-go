@@ -375,20 +375,20 @@ func (irc *Connection) State() ConnectionState {
 // Quit the current connection and disconnect from the server
 // RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.6
 func (irc *Connection) Quit() {
-	success, state := func() (bool, ConnectionState) {
+	success := func() bool {
 		irc.stateMutex.Lock()
 		defer irc.stateMutex.Unlock()
 
 		switch irc.connectionState {
 		case ConnectionNotStarted:
 			irc.connectionState = ConnectionStopped
-			return false, irc.connectionState
+			return false
 		case ConnectionConnecting, ConnectionActive, ConnectionSleeping:
 			irc.quitAt = time.Now()
 			irc.connectionState = ConnectionStopping
-			return true, irc.connectionState
+			return true
 		default:
-			return false, irc.connectionState
+			return false
 		}
 	}()
 
@@ -397,14 +397,12 @@ func (irc *Connection) Quit() {
 	}
 
 	// interrupt sleep if applicable
-	if state == ConnectionSleeping {
-		select {
-		case irc.reconnSig <- struct{}{}:
-		default:
-		}
-		return
+	select {
+	case irc.reconnSig <- struct{}{}:
+	default:
 	}
 
+	// send QUIT (this is a no-op if we are already stopped)
 	quitMessage := irc.QuitMessage
 	if quitMessage == "" {
 		quitMessage = irc.Version
