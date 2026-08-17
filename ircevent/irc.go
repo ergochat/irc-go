@@ -292,12 +292,11 @@ func (irc *Connection) Loop() {
 }
 
 // Main loop to control the connection.
-func (irc *Connection) maintenanceLoop() {
+func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 	defer func() {
 		close(irc.quitEvent)
 	}()
 
-	var lastReconnect time.Time
 	for {
 		irc.waitForStop(ConnectionSleeping)
 
@@ -936,6 +935,7 @@ func (irc *Connection) Connect() (err error) {
 	}
 
 	socketOpen := false
+	connectTime := time.Now()
 
 	// maintain invariant described above:
 	defer func() {
@@ -956,7 +956,7 @@ func (irc *Connection) Connect() (err error) {
 			}
 			irc.stateMutex.Unlock()
 			if startLoop {
-				go irc.maintenanceLoop()
+				go irc.maintenanceLoop(connectTime)
 			}
 		}
 		if err != nil {

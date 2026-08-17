@@ -8,6 +8,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -773,4 +774,55 @@ func TestConcurrentConnectAndQuit(t *testing.T) {
 	default:
 		t.Errorf("Unexpected error from Connect(): %v", connectErr)
 	}
+}
+
+func sleepInterruptionTest(t *testing.T, poll, reconnect bool) {
+	var wg sync.WaitGroup
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	// this is so long that we will fail unless the interruption succeeds:
+	irccon.ReconnectFreq = time.Hour
+	irccon.AddConnectCallback(func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	irccon.AddCallback("JOIN", func(e ircmsg.Message) { irccon.Send("QUIT") })
+	irccon.AddDisconnectCallback(func(e ircmsg.Message) {
+		wg.Done()
+	})
+
+	wg.Add(1)
+	err := irccon.Connect()
+	if err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+	wg.Wait()
+
+	// poll until sleep starts
+	if poll {
+		for irccon.State() != ConnectionSleeping {
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if reconnect {
+		wg.Add(1)
+		irccon.Reconnect()
+		wg.Wait()
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestSleepInterruptibleByQuit(t *testing.T) {
+	sleepInterruptionTest(t, true, false)
+}
+
+func TestSleepInterruptibleByQuitNondeterministic(t *testing.T) {
+	sleepInterruptionTest(t, false, false)
+}
+
+func TestSleepInterruptibleByReconnect(t *testing.T) {
+	sleepInterruptionTest(t, true, true)
+}
+
+func TestSleepInterruptibleByReconnectNondeterministic(t *testing.T) {
+	sleepInterruptionTest(t, false, true)
 }
