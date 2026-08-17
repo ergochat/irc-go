@@ -53,14 +53,16 @@ type ConnectionState uint
 const (
 	// ConnectionNotStarted is the state of a connection before the initial Connect() call.
 	ConnectionNotStarted ConnectionState = iota
-	// ConnectionConnecting is the state of a connection currently connecting, or reconnecting,
-	// to the IRC server.
+	// ConnectionConnecting is the state of a connection during the initial Connect() call.
 	ConnectionConnecting
 	// ConnectionActive is the state of a connection actively connected to the IRC server,
-	// ready to send and receive messages.
+	// ready to send and receive messages, and subject to automatic reconnection.
 	ConnectionActive
 	// ConnectionSleeping is the state of a connection pausing in between reconnect attempts.
 	ConnectionSleeping
+	// ConnectionReconnecting is the state of a connection during an automatic reconnection
+	// attempt.
+	ConnectionReconnecting
 	// ConnectionStopping is the state of a connection after Quit() was called, but before
 	// shutdown is complete.
 	ConnectionStopping

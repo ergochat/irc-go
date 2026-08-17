@@ -4,16 +4,26 @@
 
 /*
 Here's the concurrency design of this project (largely unchanged from thoj/go-ircevent):
-Connect() spawns 3 goroutines (readLoop, writeLoop, pingLoop). The client then
-calls Loop(), which monitors their state. Loop() will wait for them
-to make a clean stop and then run another Connect(). The system can be
-interrupted asynchronously by sending a message, e.g, with Privmsg(), or by
-calling Reconnect() (which disconnects and forces a reconnection), or by calling
-Quit(), which sends QUIT to the server and will eventually stop the Loop().
+A successful Connect() spawns 4 goroutines (readLoop, writeLoop, pingLoop, maintenanceLoop).
+maintenanceLoop() waits for the other goroutines to make a clean stop, then runs another
+Connect(). The system can be interrupted asynchronously by sending a message, e.g, with
+Privmsg(), or by calling Reconnect() (which disconnects and forces a reconnection),
+or by calling Quit(), which sends QUIT to the server and will eventually stop maintenanceLoop().
 
 The stop mechanism is to close the (*Connection).end channel (which is only closed,
 never sent-on normally), so every blocking operation in the 3 loops must also
 select on `end` to make sure it stops in a timely fashion.
+
+The state machine is like this:
+
+[Successful connect]
+ConnectionNotStarted --(Connect)--> ConnectionConnecting --(successful handshake)--> ConnectionActive
+[Maintenance loop after successful connect]
+ConnectionActive --(connection drops)--> ConnectionSleeping -> ConnectionReconnecting -> ConnectionActive
+[Quit() called]
+{Any state} --(Quit called)--> ConnectionStopping -> ConnectionStopped
+[Unsuccessful initial connect]
+ConnectionNotStarted --(Connect)--> ConnectionConnecting --(failed handshake)--> ConnectionNotStarted
 */
 
 package ircevent
@@ -282,6 +292,12 @@ func (irc *Connection) isQuitting() bool {
 // Wait blocks until the IRC connection has been stopped intentionally, via Quit().
 // Calls to Wait() are only valid after an initial Connect() call has succeeded.
 func (irc *Connection) Wait() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+	// if the initial Connect() call succeeded, this gets unblocked by maintenanceLoop()
+	// exiting after Quit(). if it didn't, this may never unblock, but there's not much
+	// we can do about it:
 	<-irc.quitEvent
 }
 
@@ -331,7 +347,7 @@ func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 		}
 
 		lastReconnect = time.Now()
-		err := irc.Connect()
+		err := irc.connectInternal(ConnectionReconnecting)
 		if err != nil {
 			// we are still stopped, the stop checks will return immediately
 			irc.Log.Printf("Error while reconnecting: %s\n", err)
@@ -383,7 +399,7 @@ func (irc *Connection) Quit() {
 		case ConnectionNotStarted:
 			irc.connectionState = ConnectionStopped
 			return false
-		case ConnectionConnecting, ConnectionActive, ConnectionSleeping:
+		case ConnectionConnecting, ConnectionActive, ConnectionSleeping, ConnectionReconnecting:
 			irc.quitAt = time.Now()
 			irc.connectionState = ConnectionStopping
 			return true
@@ -752,7 +768,7 @@ func (irc *Connection) Reconnect() {
 	switch irc.State() {
 	case ConnectionNotStarted:
 		return // Reconnect() is invalid before initial Connect()
-	case ConnectionConnecting:
+	case ConnectionConnecting, ConnectionReconnecting:
 		return // no-op, wait for the ongoing Connect() to complete
 	case ConnectionStopping, ConnectionStopped:
 		return // no-op, we can't reconnect
@@ -815,9 +831,17 @@ func (irc *Connection) dial() (socket net.Conn, err error) {
 	return tlsSocket, nil
 }
 
-func (irc *Connection) performConfigNormalization() error {
+func (irc *Connection) performConfigNormalization() (err error) {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
+
+	// config normalization error is unrecoverable
+	defer func() {
+		if err != nil {
+			irc.connectionState = ConnectionStopped
+			close(irc.quitEvent)
+		}
+	}()
 
 	// these are initialized only once in the lifetime of the Connection object:
 	irc.reconnSig = make(chan empty, 1)
@@ -902,6 +926,10 @@ func (irc *Connection) normalizeConfig() error {
 // the connection is ready for use and will be maintained (including automatic reconnection)
 // until Quit() is called. If it is not nil, the connection is inactive.
 func (irc *Connection) Connect() (err error) {
+	return irc.connectInternal(ConnectionConnecting)
+}
+
+func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	if err := irc.normalizeConfig(); err != nil {
 		return err
 	}
@@ -920,10 +948,10 @@ func (irc *Connection) Connect() (err error) {
 		switch prevState {
 		case ConnectionStopping, ConnectionStopped:
 			return prevState, ClientHasQuit
-		case ConnectionActive, ConnectionConnecting:
+		case ConnectionActive, ConnectionConnecting, ConnectionReconnecting:
 			return prevState, connectionAlreadyActive
 		case ConnectionNotStarted, ConnectionSleeping:
-			irc.connectionState = ConnectionConnecting
+			irc.connectionState = newState
 			return prevState, nil
 		default:
 			return prevState, ClientHasQuit // impossible
@@ -945,7 +973,7 @@ func (irc *Connection) Connect() (err error) {
 			switch irc.connectionState {
 			case ConnectionStopping, ConnectionStopped:
 				err = ClientHasQuit // take the error path and shut down
-			case ConnectionConnecting:
+			case ConnectionConnecting, ConnectionReconnecting:
 				irc.connectionState = ConnectionActive // success
 				// start the maintenance loop iff this is the first successful Connect()
 				startLoop = (prevState == ConnectionNotStarted)

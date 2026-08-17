@@ -826,3 +826,15 @@ func TestSleepInterruptibleByReconnect(t *testing.T) {
 func TestSleepInterruptibleByReconnectNondeterministic(t *testing.T) {
 	sleepInterruptionTest(t, false, true)
 }
+
+func TestConfigNormalization(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.SASLMech = "invalid_value"
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("config normalization failure not detected by Connect()")
+	}
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait() // must exit immediately
+}
