@@ -314,9 +314,9 @@ func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 	}()
 
 	for {
-		irc.waitForStop(ConnectionSleeping)
+		state := irc.waitForStop(ConnectionSleeping)
 
-		if irc.isQuitting() {
+		if state == ConnectionStopping || state == ConnectionStopped {
 			return
 		}
 
@@ -358,7 +358,7 @@ func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 // wait for all goroutines to stop. XXX: this is not safe for concurrent
 // use, call only from Connect() and maintenanceLoop() (which have a proper
 // happens-before relation)
-func (irc *Connection) waitForStop(newState ConnectionState) {
+func (irc *Connection) waitForStop(nextState ConnectionState) ConnectionState {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
 
@@ -373,11 +373,12 @@ func (irc *Connection) waitForStop(newState ConnectionState) {
 		// after Quit() we only allow transitions forwards to the stopped state:
 		irc.connectionState = ConnectionStopped
 	default:
-		irc.connectionState = newState
+		irc.connectionState = nextState
 	}
 	irc.socket = nil
 	// preserve old guarantee that CurrentNick() returns "" while disconnected:
 	irc.currentNick = ""
+	return irc.connectionState
 }
 
 // State returns the state of the connection to the IRC server.
