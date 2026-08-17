@@ -8,7 +8,6 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -792,23 +791,28 @@ func TestConcurrentConnectAndQuit(t *testing.T) {
 }
 
 func sleepInterruptionTest(t *testing.T, poll, reconnect bool) {
-	var wg sync.WaitGroup
+	connectDone := make(chan struct{}, 1)
+	disconnectDone := make(chan struct{}, 1)
 	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	irccon.Debug = true
 	// this is so long that we will fail unless the interruption succeeds:
 	irccon.ReconnectFreq = time.Hour
-	irccon.AddConnectCallback(func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
-	irccon.AddCallback("JOIN", func(e ircmsg.Message) { irccon.Send("QUIT") })
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
+		go func() {
+			<-connectDone
+			irccon.Send("QUIT")
+		}()
+	})
 	irccon.AddDisconnectCallback(func(e ircmsg.Message) {
-		wg.Done()
+		disconnectDone <- struct{}{}
 	})
 
-	wg.Add(1)
 	err := irccon.Connect()
 	if err != nil {
 		t.Fatalf("couldn't connect: %v", err)
 	}
-	wg.Wait()
+	connectDone <- struct{}{}
+	<-disconnectDone
 
 	// poll until sleep starts
 	if poll {
@@ -818,9 +822,9 @@ func sleepInterruptionTest(t *testing.T, poll, reconnect bool) {
 	}
 
 	if reconnect {
-		wg.Add(1)
 		irccon.Reconnect()
-		wg.Wait()
+		connectDone <- struct{}{}
+		<-disconnectDone
 	}
 	irccon.Quit()
 	irccon.Wait()
