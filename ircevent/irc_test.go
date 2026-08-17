@@ -745,6 +745,21 @@ func TestConnectAfterQuit(t *testing.T) {
 	assertEqual(irccon.Connect(), ClientHasQuit)
 }
 
+func TestWaitAfterQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	irccon.Quit()
+	assertEqual(irccon.State(), ConnectionStopped)
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("shouldn't be able to connect here")
+	}
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
 func TestConcurrentConnectAndQuit(t *testing.T) {
 	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	irccon.Debug = true

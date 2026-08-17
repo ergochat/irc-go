@@ -391,6 +391,10 @@ func (irc *Connection) State() ConnectionState {
 // typically by sending the QUIT command. It returns immediately;
 // use Wait() to block until the connection is fully stopped.
 func (irc *Connection) Quit() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+
 	success := func() bool {
 		irc.stateMutex.Lock()
 		defer irc.stateMutex.Unlock()
@@ -398,6 +402,7 @@ func (irc *Connection) Quit() {
 		switch irc.connectionState {
 		case ConnectionNotStarted:
 			irc.connectionState = ConnectionStopped
+			close(irc.quitEvent)
 			return false
 		case ConnectionConnecting, ConnectionActive, ConnectionSleeping, ConnectionReconnecting:
 			irc.quitAt = time.Now()
