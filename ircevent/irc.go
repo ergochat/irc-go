@@ -448,7 +448,8 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 
 	// XXX edge case: pwrite and end can both be nil during ConnectionConnecting
 	// of the first Connect() (during the dial, before the socket is open)
-	if state == ConnectionNotStarted || state == ConnectionStopped || pwrite == nil {
+	if state == ConnectionNotStarted || state == ConnectionSleeping ||
+		state == ConnectionStopped || pwrite == nil {
 		return ClientDisconnected
 	}
 
@@ -960,9 +961,21 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 			return prevState, ClientHasQuit
 		case ConnectionActive, ConnectionConnecting, ConnectionReconnecting:
 			return prevState, connectionAlreadyActive
-		case ConnectionNotStarted, ConnectionSleeping:
-			irc.connectionState = newState
-			return prevState, nil
+		case ConnectionNotStarted:
+			if newState == ConnectionConnecting {
+				irc.connectionState = newState
+				return prevState, nil
+			} else {
+				return prevState, errors.New("Impossible state (reconnect before connect)")
+			}
+		case ConnectionSleeping:
+			if newState == ConnectionReconnecting {
+				irc.connectionState = newState
+				return prevState, nil
+			} else {
+				// Connect() instead of Reconnect() during sleep, rejected
+				return prevState, connectionAlreadyActive
+			}
 		default:
 			return prevState, ClientHasQuit // impossible
 		}
