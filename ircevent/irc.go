@@ -973,6 +973,7 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 
 	// maintain invariant described above:
 	defer func() {
+		var currentState ConnectionState
 		if err == nil {
 			startLoop := false
 			irc.stateMutex.Lock()
@@ -988,6 +989,7 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 					"impossible state after successful connection (prev=%d, current=%d)",
 					prevState, irc.connectionState)
 			}
+			currentState = irc.connectionState
 			irc.stateMutex.Unlock()
 			if startLoop {
 				go irc.maintenanceLoop(connectTime)
@@ -997,7 +999,7 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 			if socketOpen {
 				// dial succeeded but we had a layer 7 failure
 				irc.closeEnd()
-				irc.waitForStop(prevState)
+				currentState = irc.waitForStop(prevState)
 			} else {
 				// dial failed
 				irc.stateMutex.Lock()
@@ -1007,8 +1009,13 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 				default:
 					irc.connectionState = prevState
 				}
+				currentState = irc.connectionState
 				irc.stateMutex.Unlock()
 			}
+		}
+		if prevState == ConnectionNotStarted && (currentState == ConnectionStopping || currentState == ConnectionStopped) {
+			// maintenanceLoop will never start, so we need to unblock Wait() here
+			close(irc.quitEvent)
 		}
 	}()
 
@@ -1045,6 +1052,7 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	irc.isupport = nil
 	irc.capsAcked = make(map[string]string)
 	irc.capsAdvertised = nil
+	state := irc.connectionState
 	irc.stateMutex.Unlock()
 	irc.batchMutex.Lock()
 	irc.batches = make(map[string]*batchInProgress)
@@ -1058,6 +1066,12 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	go irc.pingLoop()
 
 	socketOpen = true
+
+	if state == ConnectionStopping || state == ConnectionStopped {
+		// if we got Quit() during dial, stop here without doing the layer 7 handshake;
+		// eventually we may make dial itself preemptible via context cancellation
+		return ClientHasQuit
+	}
 
 	err = irc.performHandshake()
 	return err

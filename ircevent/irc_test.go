@@ -706,6 +706,41 @@ func TestConnectDialFailure(t *testing.T) {
 	irccon.Wait()
 }
 
+func TestQuitDuringDial(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	var defaultDialer net.Dialer
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		irccon.Quit()
+		return defaultDialer.DialContext(ctx, network, addr)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	irccon.Connect()
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait() // quitEvent must get closed
+}
+
+func TestQuitDuringRedial(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.ReconnectFreq = time.Nanosecond
+	var defaultDialer net.Dialer
+	var dial int
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if dial == 1 {
+			irccon.Quit()
+		}
+		dial++
+		return defaultDialer.DialContext(ctx, network, addr)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	assertEqual(err, nil)
+	irccon.Send("QUIT") // trigger automatic reconnection
+	irccon.Wait()       // quitEvent must get closed
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
 func TestConnectLayer7Failure(t *testing.T) {
 	irccon := connForTesting("go-eventirc", "go-eventirc", false)
 	// ergo poison cap, causes disconnection when requested
