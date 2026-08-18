@@ -8,6 +8,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -891,4 +892,98 @@ func TestConfigNormalization(t *testing.T) {
 	}
 	assertEqual(irccon.State(), ConnectionStopped)
 	irccon.Wait() // must exit immediately
+}
+
+func TestDebounceConnect(t *testing.T) {
+	numGoroutines := 10
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	errChan := make(chan error, numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			errChan <- irccon.Connect()
+		}()
+	}
+
+	errCounts := make(map[error]int)
+	for i := 0; i < numGoroutines; i++ {
+		err := <-errChan
+		errCounts[err] += 1
+	}
+
+	// exactly 1 connect should succeed
+	assertEqual(errCounts, map[error]int{
+		nil:                     1,
+		connectionAlreadyActive: numGoroutines - 1,
+	})
+
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestDebounceQuit(t *testing.T) {
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	if err := irccon.Connect(); err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+
+	// concurrent Quits, exactly one should succeed,
+	// and we shouldn't corrupt any state or panic
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			irccon.Quit()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
+func TestDebounceReconnect(t *testing.T) {
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.ReconnectFreq = time.Nanosecond
+	numConnects := 0
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
+		numConnects++
+	})
+	if err := irccon.Connect(); err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+
+	// concurrent Reconnects, undefined how many should succeed
+	// we shouldn't corrupt any state or panic
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			irccon.Reconnect()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	state := irccon.State()
+	if !(state == ConnectionSleeping || state == ConnectionReconnecting || state == ConnectionActive) {
+		t.Errorf("got invalid state after reconnect: %d", state)
+	}
+
+	irccon.Quit()
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+
+	if numConnects < 1 || numConnects > (numGoroutines+1) {
+		t.Errorf("invalid number of connects: %d", numConnects)
+	}
 }
