@@ -771,6 +771,10 @@ func (irc *Connection) Connected() bool {
 // Reconnect forces the client to reconnect to the server. It returns
 // immediately.
 func (irc *Connection) Reconnect() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+
 	switch irc.State() {
 	case ConnectionNotStarted:
 		return // Reconnect() is invalid before initial Connect()
