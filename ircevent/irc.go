@@ -128,61 +128,38 @@ func (irc *Connection) readLoop() {
 		}
 	}()
 
-	msgChan := make(chan string)
-	errChan := make(chan error)
-	go readMsgLoop(irc.socket, irc.MaxLineLen, msgChan, errChan, irc.end)
+	var reader ircreader.Reader
+	reader.Initialize(irc.socket, 1024, irc.MaxLineLen+maxlenTags)
 
 	lastExpireCheck := time.Now()
 
 	for {
-		select {
-		case <-irc.end:
-			return
-		case msg := <-msgChan:
-			if irc.Debug {
-				irc.Log.Printf("<-- %s\n", strings.TrimSpace(msg))
-			}
-
-			parsedMsg, err := ircmsg.ParseLine(msg)
-			if err == nil {
-				err = irc.runCallbacks(parsedMsg, msg)
-				if err != nil {
-					irc.setError(err)
-					return
-				}
-			} else {
-				irc.Log.Printf("invalid message from server: %v\n", err)
-			}
-			irc.runRawCallbacks(msg, parsedMsg, err)
-		case err := <-errChan:
+		msgBytes, err := reader.ReadLine()
+		if err != nil {
 			irc.setError(err)
 			return
 		}
+		msg := string(msgBytes)
+
+		if irc.Debug {
+			irc.Log.Printf("<-- %s\n", strings.TrimSpace(msg))
+		}
+
+		parsedMsg, err := ircmsg.ParseLine(msg)
+		if err == nil {
+			err = irc.runCallbacks(parsedMsg, msg)
+			if err != nil {
+				irc.setError(err)
+				return
+			}
+		} else {
+			irc.Log.Printf("invalid message from server: %v\n", err)
+		}
+		irc.runRawCallbacks(msg, parsedMsg, err)
 
 		if irc.batchNegotiated() && time.Since(lastExpireCheck) > irc.Timeout {
 			irc.expireBatches(false)
 			lastExpireCheck = time.Now()
-		}
-	}
-}
-
-func readMsgLoop(socket net.Conn, maxLineLen int, msgChan chan string, errChan chan error, end chan empty) {
-	var reader ircreader.Reader
-	reader.Initialize(socket, 1024, maxLineLen+maxlenTags)
-	for {
-		msgBytes, err := reader.ReadLine()
-		if err == nil {
-			select {
-			case msgChan <- string(msgBytes):
-			case <-end:
-				return
-			}
-		} else {
-			select {
-			case errChan <- err:
-			case <-end:
-			}
-			return
 		}
 	}
 }
@@ -361,10 +338,6 @@ func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 func (irc *Connection) waitForStop(nextState ConnectionState) ConnectionState {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
-
-	if irc.socket != nil {
-		irc.socket.Close()
-	}
 
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
@@ -807,6 +780,9 @@ func (irc *Connection) closeEndNoMutex() {
 	if !irc.endClosed {
 		irc.endClosed = true
 		close(irc.end)
+		// close the socket to interrupt readLoop, on a separate goroutine
+		// so we don't block while holding the mutex
+		go irc.socket.Close()
 	}
 }
 
