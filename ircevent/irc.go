@@ -186,13 +186,9 @@ func (irc *Connection) writeLoop() {
 				irc.Log.Printf("--> %s\n", bytes.TrimSpace(b))
 			}
 
-			if irc.Timeout != 0 {
-				irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
-			}
+			irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
 			_, err := irc.socket.Write(b)
-			if irc.Timeout != 0 {
-				irc.socket.SetWriteDeadline(time.Time{})
-			}
+			irc.socket.SetWriteDeadline(time.Time{})
 			if err != nil {
 				irc.setError(err)
 				return
@@ -860,7 +856,7 @@ func (irc *Connection) performConfigNormalization() (err error) {
 	if irc.KeepAlive == 0 {
 		irc.KeepAlive = 4 * time.Minute
 	}
-	if irc.Timeout == 0 {
+	if irc.Timeout <= 0 {
 		irc.Timeout = 1 * time.Minute
 	}
 	if irc.KeepAlive < irc.Timeout {
