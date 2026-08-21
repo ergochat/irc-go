@@ -136,7 +136,12 @@ func (irc *Connection) readLoop() {
 	for {
 		msgBytes, err := reader.ReadLine()
 		if err != nil {
-			irc.setError(err)
+			select {
+			case <-irc.end:
+				// shut down elsewhere, benign
+			default:
+				irc.setError(err)
+			}
 			return
 		}
 		msg := string(msgBytes)
@@ -782,7 +787,10 @@ func (irc *Connection) closeEndNoMutex() {
 		close(irc.end)
 		// close the socket to interrupt readLoop, on a separate goroutine
 		// so we don't block while holding the mutex
-		go irc.socket.Close()
+		go func() {
+			defer irc.wg.Done()
+			irc.socket.Close()
+		}()
 	}
 }
 
@@ -1031,7 +1039,8 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	irc.end = make(chan empty)
 	irc.endClosed = false
 	irc.pwrite = make(chan []byte, writeQueueSize)
-	irc.wg.Add(3)
+	// 3 goroutines, plus the asynchronous socket close:
+	irc.wg.Add(4)
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty)
