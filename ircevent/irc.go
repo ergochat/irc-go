@@ -4,16 +4,26 @@
 
 /*
 Here's the concurrency design of this project (largely unchanged from thoj/go-ircevent):
-Connect() spawns 3 goroutines (readLoop, writeLoop, pingLoop). The client then
-calls Loop(), which monitors their state. Loop() will wait for them
-to make a clean stop and then run another Connect(). The system can be
-interrupted asynchronously by sending a message, e.g, with Privmsg(), or by
-calling Reconnect() (which disconnects and forces a reconnection), or by calling
-Quit(), which sends QUIT to the server and will eventually stop the Loop().
+A successful Connect() spawns 4 goroutines (readLoop, writeLoop, pingLoop, maintenanceLoop).
+maintenanceLoop() waits for the other goroutines to make a clean stop, then runs another
+Connect(). The system can be interrupted asynchronously by sending a message, e.g, with
+Privmsg(), or by calling Reconnect() (which disconnects and forces a reconnection),
+or by calling Quit(), which sends QUIT to the server and will eventually stop maintenanceLoop().
 
 The stop mechanism is to close the (*Connection).end channel (which is only closed,
 never sent-on normally), so every blocking operation in the 3 loops must also
 select on `end` to make sure it stops in a timely fashion.
+
+The state machine is like this:
+
+[Successful connect]
+ConnectionNotStarted --(Connect)--> ConnectionConnecting --(successful handshake)--> ConnectionActive
+[Maintenance loop after successful connect]
+ConnectionActive --(connection drops)--> ConnectionSleeping -> ConnectionReconnecting -> ConnectionActive
+[Quit() called]
+{Any state} --(Quit called)--> ConnectionStopping -> ConnectionStopped
+[Unsuccessful initial connect]
+ConnectionNotStarted --(Connect)--> ConnectionConnecting --(failed handshake)--> ConnectionNotStarted
 */
 
 package ircevent
@@ -59,8 +69,9 @@ var (
 	CapabilityNotNegotiated = errors.New("The IRCv3 capability required for this was not negotiated")
 	NoLabeledResponse       = errors.New("The server failed to send a labeled response to the command")
 
-	serverDidNotQuit = errors.New("server did not respond to QUIT")
-	ClientHasQuit    = errors.New("client has called Quit()")
+	serverDidNotQuit        = errors.New("server did not respond to QUIT")
+	connectionAlreadyActive = errors.New("connection is already active")
+	ClientHasQuit           = errors.New("client has called Quit()")
 )
 
 // Call this on an error forcing a disconnection:
@@ -111,6 +122,7 @@ func (irc *Connection) readLoop() {
 	defer irc.wg.Done()
 
 	defer func() {
+		irc.expireBatches(true)
 		if irc.registered {
 			irc.runDisconnectCallbacks()
 		}
@@ -229,7 +241,7 @@ func (irc *Connection) processTick(tick int) {
 	defer irc.stateMutex.Unlock()
 
 	// XXX: handle the server ignoring QUIT
-	if irc.quit && time.Since(irc.quitAt) >= irc.Timeout {
+	if irc.connectionState == ConnectionStopping && time.Since(irc.quitAt) >= irc.Timeout {
 		err = serverDidNotQuit
 		return
 	}
@@ -273,18 +285,38 @@ func (irc *Connection) pingLoop() {
 }
 
 func (irc *Connection) isQuitting() bool {
-	irc.stateMutex.Lock()
-	defer irc.stateMutex.Unlock()
-	return irc.quit
+	state := irc.State()
+	return (state == ConnectionStopping || state == ConnectionStopped)
+}
+
+// Wait blocks until the IRC connection has been stopped intentionally, via Quit().
+// Calls to Wait() are only valid after an initial Connect() call has succeeded.
+func (irc *Connection) Wait() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+	// if the initial Connect() call succeeded, this gets unblocked by maintenanceLoop()
+	// exiting after Quit(). if it didn't, this may never unblock, but there's not much
+	// we can do about it:
+	<-irc.quitEvent
+}
+
+// Loop blocks until the IRC connection has been stopped intentionally, via Quit().
+// It is an alias for Wait(), retained for compatibility reasons.
+func (irc *Connection) Loop() {
+	irc.Wait()
 }
 
 // Main loop to control the connection.
-func (irc *Connection) Loop() {
-	var lastReconnect time.Time
-	for {
-		irc.waitForStop()
+func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
+	defer func() {
+		close(irc.quitEvent)
+	}()
 
-		if irc.isQuitting() {
+	for {
+		state := irc.waitForStop(ConnectionSleeping)
+
+		if state == ConnectionStopping || state == ConnectionStopped {
 			return
 		}
 
@@ -301,12 +333,21 @@ func (irc *Connection) Loop() {
 			select {
 			case <-t.C:
 			case <-irc.reconnSig:
+				if irc.Debug {
+					irc.Log.Printf("Sleep between reconnect attempts interrupted")
+				}
 				t.Stop()
+			}
+		} else {
+			// drain any buffered Reconnect() request even if there was no delay
+			select {
+			case <-irc.reconnSig:
+			default:
 			}
 		}
 
 		lastReconnect = time.Now()
-		err := irc.Connect()
+		err := irc.connectInternal(ConnectionReconnecting)
 		if err != nil {
 			// we are still stopped, the stop checks will return immediately
 			irc.Log.Printf("Error while reconnecting: %s\n", err)
@@ -315,9 +356,9 @@ func (irc *Connection) Loop() {
 }
 
 // wait for all goroutines to stop. XXX: this is not safe for concurrent
-// use, call only from Connect() and Loop() (which will be on the same
-// client goroutine)
-func (irc *Connection) waitForStop() {
+// use, call only from Connect() and maintenanceLoop() (which have a proper
+// happens-before relation)
+func (irc *Connection) waitForStop(nextState ConnectionState) ConnectionState {
 	<-irc.end
 	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
 
@@ -325,23 +366,69 @@ func (irc *Connection) waitForStop() {
 		irc.socket.Close()
 	}
 
-	irc.expireBatches(true)
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	switch irc.connectionState {
+	case ConnectionStopping, ConnectionStopped:
+		// after Quit() we only allow transitions forwards to the stopped state:
+		irc.connectionState = ConnectionStopped
+	default:
+		irc.connectionState = nextState
+	}
+	irc.socket = nil
+	// preserve old guarantee that CurrentNick() returns "" while disconnected:
+	irc.currentNick = ""
+	return irc.connectionState
 }
 
-// Quit the current connection and disconnect from the server
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.6
+// State returns the state of the connection to the IRC server.
+func (irc *Connection) State() ConnectionState {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+	return irc.connectionState
+}
+
+// Quit starts the process of disconnecting from the IRC server,
+// typically by sending the QUIT command. It returns immediately;
+// use Wait() to block until the connection is fully stopped.
 func (irc *Connection) Quit() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+
+	success := func() bool {
+		irc.stateMutex.Lock()
+		defer irc.stateMutex.Unlock()
+
+		switch irc.connectionState {
+		case ConnectionNotStarted:
+			irc.connectionState = ConnectionStopped
+			close(irc.quitEvent)
+			return false
+		case ConnectionConnecting, ConnectionActive, ConnectionSleeping, ConnectionReconnecting:
+			irc.quitAt = time.Now()
+			irc.connectionState = ConnectionStopping
+			return true
+		default:
+			return false
+		}
+	}()
+
+	if !success {
+		return
+	}
+
+	// interrupt sleep if applicable
+	select {
+	case irc.reconnSig <- struct{}{}:
+	default:
+	}
+
+	// send QUIT (this is a no-op if we are already stopped)
 	quitMessage := irc.QuitMessage
 	if quitMessage == "" {
 		quitMessage = irc.Version
 	}
-
-	now := time.Now()
-	irc.stateMutex.Lock()
-	irc.quit = true
-	irc.quitAt = now
-	irc.stateMutex.Unlock()
-
 	// the server will respond to this by closing our connection;
 	// if it doesn't, pingLoop will eventually notice and close it
 	irc.Send("QUIT", quitMessage)
@@ -354,12 +441,15 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	// `end` is closed), but invocations from outside do (even though the race window
 	// is very small).
 	irc.stateMutex.Lock()
-	running := irc.running
+	state := irc.connectionState
 	end := irc.end
 	pwrite := irc.pwrite
 	irc.stateMutex.Unlock()
 
-	if !running {
+	// XXX edge case: pwrite and end can both be nil during ConnectionConnecting
+	// of the first Connect() (during the dial, before the socket is open)
+	if state == ConnectionNotStarted || state == ConnectionSleeping ||
+		state == ConnectionStopped || pwrite == nil {
 		return ClientDisconnected
 	}
 
@@ -371,7 +461,7 @@ func (irc *Connection) sendInternal(b []byte) (err error) {
 	}
 }
 
-// Send a built ircmsg.Message.
+// SendIRCMessage sends a built ircmsg.Message.
 func (irc *Connection) SendIRCMessage(msg ircmsg.Message) error {
 	b, err := msg.LineBytesStrict(true, irc.MaxLineLen)
 	if err != nil && !(irc.AllowTruncation && err == ircmsg.ErrorBodyTooLong) {
@@ -383,12 +473,12 @@ func (irc *Connection) SendIRCMessage(msg ircmsg.Message) error {
 	return irc.sendInternal(b)
 }
 
-// Send an IRC message with tags.
+// SendWithTags sends an IRC message with IRCv3 message tags.
 func (irc *Connection) SendWithTags(tags map[string]string, command string, params ...string) error {
 	return irc.SendIRCMessage(ircmsg.MakeMessage(tags, "", command, params...))
 }
 
-// Send an IRC message without tags.
+// Send sends an IRC message.
 func (irc *Connection) Send(command string, params ...string) error {
 	return irc.SendWithTags(nil, command, params...)
 }
@@ -527,54 +617,48 @@ func (irc *Connection) composeClientBatch(label string, msgs []ircmsg.Message, t
 	return buf.Bytes(), nil
 }
 
-// Use the connection to join a given channel.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.1
+// Join joins a channel.
 func (irc *Connection) Join(channel string) error {
 	return irc.Send("JOIN", channel)
 }
 
-// Leave a given channel.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.2.2
+// Part leaves a channel.
 func (irc *Connection) Part(channel string) error {
 	return irc.Send("PART", channel)
 }
 
-// Send a notification to a nickname. This is similar to Privmsg but must not receive replies.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.2
+// Notice sends an IRC NOTICE to a given target.
 func (irc *Connection) Notice(target, message string) error {
 	return irc.Send("NOTICE", target, message)
 }
 
-// Send a formated notification to a nickname.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.2
+// Noticef sends an IRC NOTICE, composed via format string.
 func (irc *Connection) Noticef(target, format string, a ...interface{}) error {
 	return irc.Notice(target, fmt.Sprintf(format, a...))
 }
 
-// Send (private) message to a target (channel or nickname).
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.4.1
+// Privmsg sends an IRC PRIVMSG to a given target.
 func (irc *Connection) Privmsg(target, message string) error {
 	return irc.Send("PRIVMSG", target, message)
 }
 
-// Send formated string to specified target (channel or nickname).
+// Privmsgf sends an IRC PRIVMSG, composed via format string.
 func (irc *Connection) Privmsgf(target, format string, a ...interface{}) error {
 	return irc.Privmsg(target, fmt.Sprintf(format, a...))
 }
 
-// Send (action) message to a target (channel or nickname).
-// No clear RFC on this one...
+// Action sends a CTCP ACTION (the /me command in a typical client) to a given target.
 func (irc *Connection) Action(target, message string) error {
 	return irc.Privmsg(target, fmt.Sprintf("\001ACTION %s\001", message))
 }
 
-// Send formatted (action) message to a target (channel or nickname).
+// Actionf sends a CTCP ACTION, composed via format string.
 func (irc *Connection) Actionf(target, format string, a ...interface{}) error {
 	return irc.Action(target, fmt.Sprintf(format, a...))
 }
 
-// Set (new) nickname.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1.2
+// SetNick changes the preferred nickname for the connection (the server may
+// accept or deny the request).
 func (irc *Connection) SetNick(n string) {
 	irc.stateMutex.Lock()
 	irc.Nick = n
@@ -583,7 +667,9 @@ func (irc *Connection) SetNick(n string) {
 	irc.Send("NICK", n)
 }
 
-// Determine nick currently used with the connection.
+// CurrentNick returns the nickname currently assigned by the server, which
+// may differ from the requested nickname. If the handshake is incomplete or
+// the connection is disconnected, the empty string is returned.
 func (irc *Connection) CurrentNick() string {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
@@ -680,15 +766,31 @@ func (irc *Connection) ISupport() (result map[string]string) {
 
 // Returns true if the connection is connected to an IRC server.
 func (irc *Connection) Connected() bool {
-	irc.stateMutex.Lock()
-	defer irc.stateMutex.Unlock()
-	return irc.running
+	return irc.State() == ConnectionActive
 }
 
-// Reconnect forces the client to reconnect to the server.
-// TODO try to ensure buffered messages are sent?
+// Reconnect forces the client to reconnect to the server. It returns
+// immediately.
 func (irc *Connection) Reconnect() {
+	if err := irc.normalizeConfig(); err != nil {
+		return
+	}
+
+	switch irc.State() {
+	case ConnectionNotStarted:
+		return // Reconnect() is invalid before initial Connect()
+	case ConnectionConnecting, ConnectionReconnecting:
+		return // no-op, wait for the ongoing Connect() to complete
+	case ConnectionStopping, ConnectionStopped:
+		return // no-op, we can't reconnect
+	case ConnectionActive, ConnectionSleeping:
+		// fall through:
+	}
+
+	// halt any existing connection:
 	irc.closeEnd()
+
+	// wake up maintenanceLoop if necessary
 	select {
 	case irc.reconnSig <- empty{}:
 	default:
@@ -702,16 +804,13 @@ func (irc *Connection) closeEnd() {
 }
 
 func (irc *Connection) closeEndNoMutex() {
-	if irc.running {
-		irc.running = false
+	if !irc.endClosed {
+		irc.endClosed = true
 		close(irc.end)
 	}
 }
 
 func (irc *Connection) dial() (socket net.Conn, err error) {
-	if irc.DialContext == nil {
-		irc.DialContext = (&net.Dialer{}).DialContext
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), irc.Timeout)
 	defer cancel()
 	socket, err = irc.DialContext(ctx, "tcp", irc.Server)
@@ -743,99 +842,199 @@ func (irc *Connection) dial() (socket net.Conn, err error) {
 	return tlsSocket, nil
 }
 
-// Connect to a given server using the current connection configuration.
-// This function also takes care of identification if a password is provided.
-// RFC 1459 details: https://tools.ietf.org/html/rfc1459#section-4.1
+func (irc *Connection) performConfigNormalization() (err error) {
+	irc.stateMutex.Lock()
+	defer irc.stateMutex.Unlock()
+
+	// config normalization error is unrecoverable
+	defer func() {
+		if err != nil {
+			irc.connectionState = ConnectionStopped
+			close(irc.quitEvent)
+		}
+	}()
+
+	// these are initialized only once in the lifetime of the Connection object:
+	irc.reconnSig = make(chan empty, 1)
+	irc.quitEvent = make(chan empty)
+
+	if irc.Server == "" {
+		return errors.New("No server provided")
+	}
+	if len(irc.Nick) == 0 {
+		irc.Nick = defaultNick
+	}
+	if irc.User == "" {
+		irc.User = irc.Nick
+	}
+	if irc.RealName == "" {
+		irc.RealName = irc.User
+	}
+	if irc.Log == nil {
+		irc.Log = log.New(os.Stdout, "", log.LstdFlags)
+	}
+	if irc.KeepAlive == 0 {
+		irc.KeepAlive = 4 * time.Minute
+	}
+	if irc.Timeout == 0 {
+		irc.Timeout = 1 * time.Minute
+	}
+	if irc.KeepAlive < irc.Timeout {
+		return errors.New("KeepAlive must be at least Timeout")
+	}
+	if irc.ReconnectFreq == 0 {
+		irc.ReconnectFreq = 2 * time.Minute
+	}
+	if irc.SASLLogin != "" && irc.SASLPassword != "" {
+		irc.UseSASL = true
+	}
+	if irc.UseSASL {
+		// ensure 'sasl' is in the cap list if necessary
+		if !sliceContains("sasl", irc.RequestCaps) {
+			irc.RequestCaps = append(irc.RequestCaps, "sasl")
+		}
+	}
+	if irc.FetchUserHost {
+		// ensure 'chghost' is in the cap list if necessary
+		if !sliceContains("chghost", irc.RequestCaps) {
+			irc.RequestCaps = append(irc.RequestCaps, "chghost")
+		}
+	}
+
+	if irc.SASLMech == "" {
+		irc.SASLMech = "PLAIN"
+	}
+	if !(irc.SASLMech == "PLAIN" || irc.SASLMech == "EXTERNAL") {
+		return fmt.Errorf("unsupported SASL mechanism %s", irc.SASLMech)
+	}
+	if irc.MaxLineLen == 0 {
+		irc.MaxLineLen = 512
+	}
+	if irc.MaxTotalBatchSize == 0 {
+		irc.MaxTotalBatchSize = 8 * 1024 * 1024
+	}
+	if irc.Version == "" {
+		irc.Version = Version
+	}
+	if irc.DialContext == nil {
+		irc.DialContext = (&net.Dialer{}).DialContext
+	}
+
+	return nil
+}
+
+func (irc *Connection) normalizeConfig() error {
+	irc.normalizeOnce.Do(func() {
+		irc.normalizeErr = irc.performConfigNormalization()
+		if irc.normalizeErr == nil {
+			irc.setupCallbacks()
+		}
+	})
+	return irc.normalizeErr
+}
+
+// Connect connects to the configured IRC server. If the returned error is nil,
+// the connection is ready for use and will be maintained (including automatic reconnection)
+// until Quit() is called. If it is not nil, the connection is inactive.
 func (irc *Connection) Connect() (err error) {
+	return irc.connectInternal(ConnectionConnecting)
+}
+
+func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
+	if err := irc.normalizeConfig(); err != nil {
+		return err
+	}
+
 	// invariant: after Connect we are in one of two states:
-	// (a) success: return nil, socket open, goroutines launched, ready for Loop
+	// (a) success: return nil, socket open, goroutines launched, ready for Loop/Wait()
+	//     state is ConnectionActive
 	// (b) failure: return error, socket closed, goroutines stopped,
 	//     ready for another call to Connect (possibly from Loop)
-	err = func() error {
+	//     state is whatever it was previously
+	prevState, err := func() (prevState ConnectionState, err error) {
 		irc.stateMutex.Lock()
 		defer irc.stateMutex.Unlock()
 
-		if irc.quit {
-			return ClientHasQuit // check this again in case of Quit() while we were asleep
-		}
-
-		// mark Server as stopped since there can be an error during connect
-		irc.running = false
-		irc.socket = nil
-		irc.currentNick = ""
-		irc.lastError = nil
-		irc.pingSent = false
-
-		if irc.Server == "" {
-			return errors.New("No server provided")
-		}
-		if len(irc.Nick) == 0 {
-			irc.Nick = defaultNick
-		}
-		if irc.User == "" {
-			irc.User = irc.Nick
-		}
-		if irc.RealName == "" {
-			irc.RealName = irc.User
-		}
-		if irc.Log == nil {
-			irc.Log = log.New(os.Stdout, "", log.LstdFlags)
-		}
-		if irc.KeepAlive == 0 {
-			irc.KeepAlive = 4 * time.Minute
-		}
-		if irc.Timeout == 0 {
-			irc.Timeout = 1 * time.Minute
-		}
-		if irc.KeepAlive < irc.Timeout {
-			return errors.New("KeepAlive must be at least Timeout")
-		}
-		if irc.ReconnectFreq == 0 {
-			irc.ReconnectFreq = 2 * time.Minute
-		}
-		if irc.SASLLogin != "" && irc.SASLPassword != "" {
-			irc.UseSASL = true
-		}
-		if irc.UseSASL {
-			// ensure 'sasl' is in the cap list if necessary
-			if !sliceContains("sasl", irc.RequestCaps) {
-				irc.RequestCaps = append(irc.RequestCaps, "sasl")
+		prevState = irc.connectionState
+		switch prevState {
+		case ConnectionStopping, ConnectionStopped:
+			return prevState, ClientHasQuit
+		case ConnectionActive, ConnectionConnecting, ConnectionReconnecting:
+			return prevState, connectionAlreadyActive
+		case ConnectionNotStarted:
+			if newState == ConnectionConnecting {
+				irc.connectionState = newState
+				return prevState, nil
+			} else {
+				return prevState, errors.New("Impossible state (reconnect before connect)")
 			}
-		}
-		if irc.FetchUserHost {
-			// ensure 'chghost' is in the cap list if necessary
-			if !sliceContains("chghost", irc.RequestCaps) {
-				irc.RequestCaps = append(irc.RequestCaps, "chghost")
+		case ConnectionSleeping:
+			if newState == ConnectionReconnecting {
+				irc.connectionState = newState
+				return prevState, nil
+			} else {
+				// Connect() instead of Reconnect() during sleep, rejected
+				return prevState, connectionAlreadyActive
 			}
+		default:
+			return prevState, ClientHasQuit // impossible
 		}
-		if irc.SASLMech == "" {
-			irc.SASLMech = "PLAIN"
-		}
-		if !(irc.SASLMech == "PLAIN" || irc.SASLMech == "EXTERNAL") {
-			return fmt.Errorf("unsupported SASL mechanism %s", irc.SASLMech)
-		}
-		if irc.MaxLineLen == 0 {
-			irc.MaxLineLen = 512
-		}
-		if irc.MaxTotalBatchSize == 0 {
-			irc.MaxTotalBatchSize = 8 * 1024 * 1024
-		}
-		if irc.Version == "" {
-			irc.Version = Version
-		}
-		// this only runs on first Connect() invocation;
-		// unlike other synch primitives it is shared across reconnections:
-		if irc.reconnSig == nil {
-			irc.reconnSig = make(chan empty)
-		}
-		return nil
 	}()
 
 	if err != nil {
 		return err
 	}
 
-	irc.setupCallbacks()
+	socketOpen := false
+	connectTime := time.Now()
+
+	// maintain invariant described above:
+	defer func() {
+		var currentState ConnectionState
+		if err == nil {
+			startLoop := false
+			irc.stateMutex.Lock()
+			switch irc.connectionState {
+			case ConnectionStopping, ConnectionStopped:
+				err = ClientHasQuit // take the error path and shut down
+			case ConnectionConnecting, ConnectionReconnecting:
+				irc.connectionState = ConnectionActive // success
+				// start the maintenance loop iff this is the first successful Connect()
+				startLoop = (prevState == ConnectionNotStarted)
+			default:
+				irc.Log.Printf(
+					"impossible state after successful connection (prev=%d, current=%d)",
+					prevState, irc.connectionState)
+			}
+			currentState = irc.connectionState
+			irc.stateMutex.Unlock()
+			if startLoop {
+				go irc.maintenanceLoop(connectTime)
+			}
+		}
+		if err != nil {
+			if socketOpen {
+				// dial succeeded but we had a layer 7 failure
+				irc.closeEnd()
+				currentState = irc.waitForStop(prevState)
+			} else {
+				// dial failed
+				irc.stateMutex.Lock()
+				switch irc.connectionState {
+				case ConnectionStopping, ConnectionStopped:
+					irc.connectionState = ConnectionStopped
+				default:
+					irc.connectionState = prevState
+				}
+				currentState = irc.connectionState
+				irc.stateMutex.Unlock()
+			}
+		}
+		if prevState == ConnectionNotStarted && (currentState == ConnectionStopping || currentState == ConnectionStopped) {
+			// maintenanceLoop will never start, so we need to unblock Wait() here
+			close(irc.quitEvent)
+		}
+	}()
 
 	if irc.Debug {
 		irc.Log.Printf("Connecting to %s (TLS: %t)\n", irc.Server, irc.UseTLS)
@@ -853,20 +1052,24 @@ func (irc *Connection) Connect() (err error) {
 	// reset all connection state
 	irc.stateMutex.Lock()
 	irc.socket = socket
-	irc.running = true
 	irc.end = make(chan empty)
+	irc.endClosed = false
 	irc.pwrite = make(chan []byte, writeQueueSize)
 	irc.wg.Add(3)
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty)
 	irc.registered = false
+	irc.lastError = nil
+	irc.pingSent = false
+	irc.currentNick = ""
 	irc.userHost = ""
 	irc.userHostRequested = false
 	irc.isupportPartial = make(map[string]string)
 	irc.isupport = nil
 	irc.capsAcked = make(map[string]string)
 	irc.capsAdvertised = nil
+	state := irc.connectionState
 	irc.stateMutex.Unlock()
 	irc.batchMutex.Lock()
 	irc.batches = make(map[string]*batchInProgress)
@@ -879,16 +1082,16 @@ func (irc *Connection) Connect() (err error) {
 	go irc.writeLoop()
 	go irc.pingLoop()
 
-	// now we have an open socket and goroutines; we need to clean up
-	// if there's a layer 7 failure
-	defer func() {
-		if err != nil {
-			irc.closeEnd()
-			irc.waitForStop()
-		}
-	}()
+	socketOpen = true
 
-	return irc.performHandshake()
+	if state == ConnectionStopping || state == ConnectionStopped {
+		// if we got Quit() during dial, stop here without doing the layer 7 handshake;
+		// eventually we may make dial itself preemptible via context cancellation
+		return ClientHasQuit
+	}
+
+	err = irc.performHandshake()
+	return err
 }
 
 func (irc *Connection) performHandshake() error {

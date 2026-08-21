@@ -1,10 +1,14 @@
 package ircevent
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"math/rand"
+	"net"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -94,6 +98,7 @@ func TestIRCMaxMessageLength(t *testing.T) {
 	irccon := connForTesting(ircnick1, "go-eventirc", false)
 	debugTest(irccon)
 	irccon.FetchUserHost = true
+	irccon.RequestCaps = []string{"message-tags", "batch", "labeled-response"}
 	gotUserhost := make(chan struct{})
 	done := make(chan struct{})
 	irccon.AddCallback(RPL_WHOREPLY, func(e ircmsg.Message) {
@@ -123,8 +128,12 @@ func TestIRCMaxMessageLength(t *testing.T) {
 		t.Errorf("Can't connect to testing ircd.")
 	}
 	<-gotUserhost
+	// XXX *even more* synchronization because as an implementation detail, our RPL_WHOREPLY
+	// callback executes before the library's
+	irccon.GetLabeledResponse(nil, "PING", "synchronize")
 	// now MaxMessageLength should return the real upper bound
 	maxMsgByteLen := irccon.MaxMessageLength(ircnick1)
+	t.Logf("got MaxMessageLength=%d\n", maxMsgByteLen)
 	msg := randStr(maxMsgByteLen)
 	err = irccon.Privmsg(ircnick1, msg)
 	if err != nil {
@@ -150,10 +159,10 @@ func TestIRCMaxMessageLength(t *testing.T) {
 		t.Errorf("Successfully relayed message over MaxMessageLength() bytes: %d", len(msg))
 	}
 	irccon.Quit()
+	irccon.Wait()
 }
 
 func TestConnection(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick1 := randStr(8)
 	ircnick2 := randStr(8)
 	ircnick2orig := ircnick2
@@ -231,7 +240,7 @@ func TestConnection(t *testing.T) {
 	irccon1.Loop()
 }
 
-func runReconnectTest(useSASL bool, t *testing.T) {
+func runReconnectTest(useSASL bool, graceful bool, t *testing.T) {
 	ircnick1 := randStr(8)
 	irccon := connForTesting(ircnick1, "IRCTestRe", false)
 	irccon.ReconnectFreq = time.Second * 1
@@ -250,10 +259,18 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 			go irccon.Quit()
 		} else {
 			irccon.Privmsgf(channel, "Connection nr %d", connects)
-			// XXX: wait for the message to actually send before we hang up
-			// (can this be avoided?)
-			time.Sleep(100 * time.Millisecond)
-			go irccon.Reconnect()
+			go func() {
+				// XXX: wait for the message to actually send before we hang up
+				// (can this be avoided?)
+				time.Sleep(100 * time.Millisecond)
+				if graceful {
+					irccon.Reconnect()
+				} else {
+					// cause the server to disconnect us unilaterally,
+					// without triggering ConnectionStopping locally
+					irccon.Send("QUIT")
+				}
+			}()
 		}
 	})
 
@@ -270,11 +287,19 @@ func runReconnectTest(useSASL bool, t *testing.T) {
 }
 
 func TestReconnect(t *testing.T) {
-	runReconnectTest(false, t)
+	runReconnectTest(false, true, t)
 }
 
 func TestReconnectWithSASL(t *testing.T) {
-	runReconnectTest(true, t)
+	runReconnectTest(true, true, t)
+}
+
+func TestReconnectOnFailure(t *testing.T) {
+	runReconnectTest(false, false, t)
+}
+
+func TestReconnectWithSASLOnFailure(t *testing.T) {
+	runReconnectTest(true, false, t)
 }
 
 func TestConnectionSSL(t *testing.T) {
@@ -290,7 +315,6 @@ func TestConnectionSSL(t *testing.T) {
 
 	irccon.AddCallback("366", func(e ircmsg.Message) {
 		irccon.Privmsg(channel, "Test Message from SSL")
-		irccon.Quit()
 	})
 
 	err := irccon.Connect()
@@ -299,6 +323,7 @@ func TestConnectionSSL(t *testing.T) {
 		t.Errorf("Can't connect to freenode.")
 	}
 
+	irccon.Quit()
 	irccon.Loop()
 }
 
@@ -331,7 +356,6 @@ func compareResults(received []int, desired ...int) bool {
 }
 
 func TestConnectionNickInUse(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick := randStr(8)
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 
@@ -373,7 +397,6 @@ func TestConnectionNickInUse(t *testing.T) {
 }
 
 func TestConnectionCallbacks(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
 	ircnick := randStr(8)
 	irccon1 := connForTesting(ircnick, "IRCTest1", false)
 	debugTest(irccon1)
@@ -439,7 +462,6 @@ func TestCAPHandling(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rand.Seed(time.Now().UnixNano())
 			ircnick := randStr(8)
 			irccon1 := connForTesting(ircnick, "IRCTest1", false)
 			irccon1.RequestCaps = tc.caps
@@ -523,6 +545,7 @@ func TestAddRawCallback(t *testing.T) {
 	debugTest(irccon)
 	commandsSeen := make(map[string]bool)
 	var linesSeen []string
+	closeEvent := make(chan struct{})
 	id := irccon.AddRawCallback(func(raw string, msg ircmsg.Message, err error) {
 		if err == nil {
 			commandsSeen[msg.Command] = true
@@ -545,13 +568,15 @@ func TestAddRawCallback(t *testing.T) {
 	seenRplNamreply := false
 	irccon.AddCallback(RPL_NAMREPLY, func(e ircmsg.Message) {
 		seenRplNamreply = true
-		irccon.Quit()
+		close(closeEvent)
 	})
 	err := irccon.Connect()
 	if err != nil {
 		t.Log(err.Error())
 		t.Errorf("Can't connect to testing ircd.")
 	}
+	<-closeEvent
+	irccon.Quit()
 	// wait for QUIT to be processed
 	irccon.Loop()
 
@@ -581,8 +606,6 @@ const (
 )
 
 func TestClientBatch(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-
 	// returns a batch callback that saves the message to a string
 	recvMultiline := func(target *string) BatchCallback {
 		return func(b *Batch) bool {
@@ -653,4 +676,314 @@ func TestClientBatch(t *testing.T) {
 
 	assertEqual(irccon1.totalBatchSize, 0)
 	assertEqual(irccon2.totalBatchSize, 0)
+}
+
+func TestConnectDialFailure(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	dialFail := true
+	dialErr := errors.New("simulated dial failure")
+	var defaultDialer net.Dialer
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if dialFail {
+			return nil, dialErr
+		} else {
+			return defaultDialer.DialContext(ctx, network, addr)
+		}
+	}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err != dialErr {
+		t.Errorf("did not receive expected dial error: %v", err)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+
+	dialFail = false
+	err = irccon.Connect()
+	if err != nil {
+		t.Errorf("could not redial after first unsuccessful dial: %v", err)
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestQuitDuringDial(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	var defaultDialer net.Dialer
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		irccon.Quit()
+		return defaultDialer.DialContext(ctx, network, addr)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	irccon.Connect()
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait() // quitEvent must get closed
+}
+
+func TestQuitDuringRedial(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.ReconnectFreq = time.Nanosecond
+	var defaultDialer net.Dialer
+	var dial int
+	irccon.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if dial == 1 {
+			irccon.Quit()
+		}
+		dial++
+		return defaultDialer.DialContext(ctx, network, addr)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	assertEqual(err, nil)
+	irccon.Send("QUIT") // trigger automatic reconnection
+	irccon.Wait()       // quitEvent must get closed
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
+func TestConnectLayer7Failure(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	// ergo poison cap, causes disconnection when requested
+	irccon.RequestCaps = []string{"ergo.chat/nope"}
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("did not receive expected dial error: %v", err)
+	}
+	assertEqual(irccon.State(), ConnectionNotStarted)
+
+	irccon.RequestCaps = []string{"message-tags", "server-time", "batch", "labeled-response", "echo-message", "account-tag"}
+	err = irccon.Connect()
+	if err != nil {
+		t.Errorf("could not redial after first unsuccessful dial: %v", err)
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestConnectAfterQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.AddCallback("001", func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	err := irccon.Connect()
+	if err != nil {
+		t.Errorf("unable to connect")
+	}
+	assertEqual(irccon.State(), ConnectionActive)
+	assertEqual(irccon.Connect(), connectionAlreadyActive)
+	irccon.Quit()
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+	assertEqual(irccon.Connect(), ClientHasQuit)
+}
+
+func TestWaitAfterQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	irccon.Quit()
+	assertEqual(irccon.State(), ConnectionStopped)
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("shouldn't be able to connect here")
+	}
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
+func TestConcurrentConnectAndQuit(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.AddConnectCallback(func(e ircmsg.Message) { irccon.Join("#go-eventirc") })
+	assertEqual(irccon.State(), ConnectionNotStarted)
+	connectEvent := make(chan struct{})
+	var connectErr error
+	quitComplete := make(chan struct{})
+	go func() {
+		connectErr = irccon.Connect()
+		close(connectEvent)
+	}()
+	go func() {
+		irccon.Quit()
+		close(quitComplete)
+	}()
+	<-connectEvent
+	switch connectErr {
+	case ClientHasQuit, ServerDisconnected:
+		// this is OK, Quit() won the race against Connect()
+		assertEqual(irccon.State(), ConnectionStopped)
+	case nil:
+		// this is OK, Connect() won the race, wait for stop
+		irccon.Wait()
+		assertEqual(irccon.State(), ConnectionStopped)
+		<-quitComplete
+	default:
+		t.Errorf("Unexpected error from Connect(): %v", connectErr)
+	}
+}
+
+func sleepInterruptionTest(t *testing.T, poll, reconnect bool) {
+	connectDone := make(chan struct{}, 1)
+	disconnectDone := make(chan struct{}, 1)
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	// this is so long that we will fail unless the interruption succeeds:
+	irccon.ReconnectFreq = time.Hour
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
+		go func() {
+			<-connectDone
+			irccon.Send("QUIT")
+		}()
+	})
+	irccon.AddDisconnectCallback(func(e ircmsg.Message) {
+		disconnectDone <- struct{}{}
+	})
+
+	err := irccon.Connect()
+	if err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+	connectDone <- struct{}{}
+	<-disconnectDone
+
+	// poll until sleep starts
+	if poll {
+		for irccon.State() != ConnectionSleeping {
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if reconnect {
+		irccon.Reconnect()
+		connectDone <- struct{}{}
+		<-disconnectDone
+	}
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestSleepInterruptibleByQuit(t *testing.T) {
+	sleepInterruptionTest(t, true, false)
+}
+
+func TestSleepInterruptibleByQuitNondeterministic(t *testing.T) {
+	sleepInterruptionTest(t, false, false)
+}
+
+func TestSleepInterruptibleByReconnect(t *testing.T) {
+	sleepInterruptionTest(t, true, true)
+}
+
+func TestSleepInterruptibleByReconnectNondeterministic(t *testing.T) {
+	sleepInterruptionTest(t, false, true)
+}
+
+func TestConfigNormalization(t *testing.T) {
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.SASLMech = "invalid_value"
+	err := irccon.Connect()
+	if err == nil {
+		t.Errorf("config normalization failure not detected by Connect()")
+	}
+	assertEqual(irccon.State(), ConnectionStopped)
+	irccon.Wait() // must exit immediately
+}
+
+func TestDebounceConnect(t *testing.T) {
+	numGoroutines := 10
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	errChan := make(chan error, numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			errChan <- irccon.Connect()
+		}()
+	}
+
+	errCounts := make(map[error]int)
+	for i := 0; i < numGoroutines; i++ {
+		err := <-errChan
+		errCounts[err] += 1
+	}
+
+	// exactly 1 connect should succeed
+	assertEqual(errCounts, map[error]int{
+		nil:                     1,
+		connectionAlreadyActive: numGoroutines - 1,
+	})
+
+	irccon.Quit()
+	irccon.Wait()
+}
+
+func TestDebounceQuit(t *testing.T) {
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	if err := irccon.Connect(); err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+
+	// concurrent Quits, exactly one should succeed,
+	// and we shouldn't corrupt any state or panic
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			irccon.Quit()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+}
+
+func TestDebounceReconnect(t *testing.T) {
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	irccon := connForTesting("go-eventirc", "go-eventirc", false)
+	irccon.Debug = true
+	irccon.ReconnectFreq = time.Nanosecond
+	numConnects := 0
+	irccon.AddConnectCallback(func(e ircmsg.Message) {
+		numConnects++
+	})
+	if err := irccon.Connect(); err != nil {
+		t.Fatalf("couldn't connect: %v", err)
+	}
+
+	// concurrent Reconnects, undefined how many should succeed
+	// we shouldn't corrupt any state or panic
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			irccon.Reconnect()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	state := irccon.State()
+	if !(state == ConnectionSleeping || state == ConnectionReconnecting || state == ConnectionActive) {
+		t.Errorf("got invalid state after reconnect: %d", state)
+	}
+
+	irccon.Quit()
+	irccon.Wait()
+	assertEqual(irccon.State(), ConnectionStopped)
+
+	if numConnects < 1 || numConnects > (numGoroutines+1) {
+		t.Errorf("invalid number of connects: %d", numConnects)
+	}
 }

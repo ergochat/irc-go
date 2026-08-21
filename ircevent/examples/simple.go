@@ -46,6 +46,8 @@ func serveDebugConnection(conn net.Conn, irc *ircevent.Connection) {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	nick := getenv("IRCEVENT_NICK", "robot")
 	server := getenv("IRCEVENT_SERVER", "testnet.ergo.chat:6697")
 	channel := getenv("IRCEVENT_CHANNEL", "#ircevent-test")
@@ -62,6 +64,7 @@ func main() {
 		SASLLogin:         saslLogin, // SASL PLAIN will be enabled automatically if these are set
 		SASLPassword:      saslPassword,
 		MaxTotalBatchSize: 1024 * 1024,
+		Log:               log.Default(),
 	}
 
 	if listenSocket := os.Getenv("IRCEVENT_DEBUG_LISTEN_ADDR"); listenSocket != "" {

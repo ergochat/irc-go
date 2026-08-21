@@ -519,15 +519,6 @@ func (irc *Connection) HandleMessage(event ircmsg.Message) {
 
 // Set up some initial callbacks to handle the IRC/CTCP protocol.
 func (irc *Connection) setupCallbacks() {
-	irc.stateMutex.Lock()
-	needBaseCallbacks := !irc.hasBaseCallbacks
-	irc.hasBaseCallbacks = true
-	irc.stateMutex.Unlock()
-
-	if !needBaseCallbacks {
-		return
-	}
-
 	// PING: we must respond with the correct PONG
 	irc.AddCallback("PING", func(e ircmsg.Message) { irc.Send("PONG", lastParam(&e)) })
 
