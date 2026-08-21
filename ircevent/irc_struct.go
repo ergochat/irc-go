@@ -91,6 +91,7 @@ type Connection struct {
 	KeepAlive       time.Duration
 	ReconnectFreq   time.Duration
 	MaxLineLen      int // maximum line length, not including tags
+	WriteQueueSize  int // size of the outgoing message queue
 	UseTLS          bool
 	UseSASL         bool
 	EnableCTCP      bool

@@ -53,8 +53,6 @@ const (
 
 	maxlenTags = 8192
 
-	writeQueueSize = 10
-
 	defaultNick = "ircevent"
 
 	CAPTimeout = time.Second * 15
@@ -853,7 +851,7 @@ func (irc *Connection) performConfigNormalization() (err error) {
 	if irc.Log == nil {
 		irc.Log = log.New(os.Stdout, "", log.LstdFlags)
 	}
-	if irc.KeepAlive == 0 {
+	if irc.KeepAlive <= 0 {
 		irc.KeepAlive = 4 * time.Minute
 	}
 	if irc.Timeout <= 0 {
@@ -862,7 +860,7 @@ func (irc *Connection) performConfigNormalization() (err error) {
 	if irc.KeepAlive < irc.Timeout {
 		return errors.New("KeepAlive must be at least Timeout")
 	}
-	if irc.ReconnectFreq == 0 {
+	if irc.ReconnectFreq <= 0 {
 		irc.ReconnectFreq = 2 * time.Minute
 	}
 	if irc.SASLLogin != "" && irc.SASLPassword != "" {
@@ -887,11 +885,14 @@ func (irc *Connection) performConfigNormalization() (err error) {
 	if !(irc.SASLMech == "PLAIN" || irc.SASLMech == "EXTERNAL") {
 		return fmt.Errorf("unsupported SASL mechanism %s", irc.SASLMech)
 	}
-	if irc.MaxLineLen == 0 {
+	if irc.MaxLineLen <= 0 {
 		irc.MaxLineLen = 512
 	}
-	if irc.MaxTotalBatchSize == 0 {
+	if irc.MaxTotalBatchSize <= 0 {
 		irc.MaxTotalBatchSize = 8 * 1024 * 1024
+	}
+	if irc.WriteQueueSize <= 0 {
+		irc.WriteQueueSize = 16
 	}
 	if irc.Version == "" {
 		irc.Version = Version
@@ -1034,7 +1035,7 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	irc.socket = socket
 	irc.end = make(chan empty)
 	irc.endClosed = false
-	irc.pwrite = make(chan []byte, writeQueueSize)
+	irc.pwrite = make(chan []byte, irc.WriteQueueSize)
 	// 3 goroutines, plus the asynchronous socket close:
 	irc.wg.Add(4)
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
