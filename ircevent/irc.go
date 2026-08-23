@@ -240,7 +240,10 @@ func (irc *Connection) processTick(tick int) (msgs [][]byte) {
 		msgs = append(msgs, []byte(fmt.Sprintf("PING %s\r\n", pingParam)))
 	}
 	if shouldRenick {
-		msgs = append(msgs, []byte(fmt.Sprintf("NICK %s\r\n", irc.PreferredNick())))
+		nickMsg := ircmsg.MakeMessage(nil, "", "NICK", irc.PreferredNick())
+		if msg, err := nickMsg.LineBytesStrict(true, irc.MaxLineLen); err == nil {
+			msgs = append(msgs, msg)
+		}
 	}
 	return msgs
 }
