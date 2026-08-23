@@ -118,7 +118,7 @@ type Connection struct {
 	quitAt          time.Time  // time Quit() was called
 	reconnSig       chan empty // interrupts sleep in between reconnects (#79)
 	quitEvent       chan empty // wait for final stop
-	pingSent        bool       // we sent PING and are waiting for PONG
+	pingSent        string     // we sent PING and are waiting for PONG
 
 	// IRC protocol connection state
 	currentNick       string // nickname assigned by the server, empty before registration
