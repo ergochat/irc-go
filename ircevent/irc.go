@@ -4,7 +4,7 @@
 
 /*
 Here's the concurrency design of this project (largely unchanged from thoj/go-ircevent):
-A successful Connect() spawns 4 goroutines (readLoop, writeLoop, pingLoop, maintenanceLoop).
+A successful Connect() spawns 3 goroutines (readLoop, writeLoop, maintenanceLoop).
 maintenanceLoop() waits for the other goroutines to make a clean stop, then runs another
 Connect(). The system can be interrupted asynchronously by sending a message, e.g, with
 Privmsg(), or by calling Reconnect() (which disconnects and forces a reconnection),
@@ -90,29 +90,45 @@ func (irc *Connection) getError() error {
 }
 
 // Send a keepalive PING in our timestamp-based format
-func (irc *Connection) ping() {
-	param := fmt.Sprintf("%s%d", keepalivePrefix, time.Now().UnixNano())
-	irc.Send("PING", param)
+func (irc *Connection) generatePing() string {
+	return fmt.Sprintf("%s%d", keepalivePrefix, time.Now().UnixNano())
 }
 
-// Interpret the PONG from a keepalive ping
-func (irc *Connection) recordPong(param string) {
-	ts := strings.TrimPrefix(param, keepalivePrefix)
-	if ts == param {
+// Decode a keepalive PONG parameter back to a time, returning the zero time if invalid
+func (irc *Connection) decodePong(pingParam string) (result time.Time) {
+	ts := strings.TrimPrefix(pingParam, keepalivePrefix)
+	if ts == pingParam {
 		return
 	}
 	t, err := strconv.ParseInt(ts, 10, 64)
 	if err != nil {
 		return
 	}
-	if irc.Debug {
-		pong := time.Unix(0, t)
-		irc.Log.Printf("Lag: %v\n", time.Since(pong))
+	return time.Unix(0, t)
+}
+
+// Record a PONG response
+func (irc *Connection) recordPong(param string) {
+	success := func() bool {
+		irc.stateMutex.Lock()
+		defer irc.stateMutex.Unlock()
+
+		if param != "" && irc.pingSent == param {
+			irc.pingSent = ""
+			return true
+		}
+		return false
+	}()
+
+	if !success {
+		return
 	}
 
-	irc.stateMutex.Lock()
-	defer irc.stateMutex.Unlock()
-	irc.pingSent = false
+	if irc.Debug {
+		if pong := irc.decodePong(param); !pong.IsZero() {
+			irc.Log.Printf("Lag: %v\n", time.Since(pong))
+		}
+	}
 }
 
 // Read data from a connection. To be used as a goroutine.
@@ -171,48 +187,68 @@ func (irc *Connection) readLoop() {
 func (irc *Connection) writeLoop() {
 	defer irc.wg.Done()
 
+	tick := 0
+	ticker := time.NewTicker(irc.Timeout)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-irc.end:
 			return
 		case b := <-irc.pwrite:
-			if len(b) == 0 {
-				continue
-			}
-
-			if irc.Debug {
-				irc.Log.Printf("--> %s\n", bytes.TrimSpace(b))
-			}
-
-			irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
-			_, err := irc.socket.Write(b)
-			irc.socket.SetWriteDeadline(time.Time{})
-			if err != nil {
-				irc.setError(err)
+			if err := irc.performWrite(b); err != nil {
 				return
+			}
+		case <-ticker.C:
+			tick++
+			msgs := irc.processTick(tick)
+			for _, msg := range msgs {
+				if err := irc.performWrite(msg); err != nil {
+					return
+				}
 			}
 		}
 	}
 }
 
+func (irc *Connection) performWrite(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+
+	if irc.Debug {
+		irc.Log.Printf("--> %s\n", bytes.TrimSpace(b))
+	}
+
+	irc.socket.SetWriteDeadline(time.Now().Add(irc.Timeout))
+	_, err := irc.socket.Write(b)
+	irc.socket.SetWriteDeadline(time.Time{})
+	if err != nil {
+		irc.setError(err)
+	}
+	return err
+}
+
 // check the status of the connection and take appropriate action
-func (irc *Connection) processTick(tick int) {
-	var err error
-	var shouldPing, shouldRenick bool
+func (irc *Connection) processTick(tick int) (msgs [][]byte) {
+	pingParam, shouldRenick, err := irc.checkStatusForTick(tick)
+	if err != nil {
+		irc.setError(err)
+		return
+	}
+	if pingParam != "" {
+		msgs = append(msgs, []byte(fmt.Sprintf("PING %s\r\n", pingParam)))
+	}
+	if shouldRenick {
+		nickMsg := ircmsg.MakeMessage(nil, "", "NICK", irc.PreferredNick())
+		if msg, err := nickMsg.LineBytesStrict(true, irc.MaxLineLen); err == nil {
+			msgs = append(msgs, msg)
+		}
+	}
+	return msgs
+}
 
-	defer func() {
-		if err != nil {
-			irc.setError(err)
-			return
-		}
-		if shouldPing {
-			irc.ping()
-		}
-		if shouldRenick {
-			irc.Send("NICK", irc.PreferredNick())
-		}
-	}()
-
+func (irc *Connection) checkStatusForTick(tick int) (pingParam string, shouldRenick bool, err error) {
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
 
@@ -221,43 +257,20 @@ func (irc *Connection) processTick(tick int) {
 		err = serverDidNotQuit
 		return
 	}
-	if irc.pingSent {
+	if irc.pingSent != "" {
 		// unacked PING is fatal
 		err = ServerTimedOut
 		return
 	}
 	pingModulus := int(irc.KeepAlive / irc.Timeout)
 	if tick%pingModulus == 0 {
-		shouldPing = true
-		irc.pingSent = true
+		irc.pingSent = irc.generatePing()
+		pingParam = irc.pingSent
 		if irc.currentNick != irc.Nick {
 			shouldRenick = true
 		}
 	}
 	return
-}
-
-// handles all periodic tasks for the connection:
-// 1. sending PING approximately every KeepAlive seconds, monitoring for PONG
-// 2. fixing up NICK if we didn't get our preferred one
-func (irc *Connection) pingLoop() {
-	ticker := time.NewTicker(irc.Timeout)
-
-	defer func() {
-		irc.wg.Done()
-		ticker.Stop()
-	}()
-
-	tick := 0
-	for {
-		select {
-		case <-irc.end:
-			return
-		case <-ticker.C:
-			tick++
-			irc.processTick(tick)
-		}
-	}
 }
 
 func (irc *Connection) isQuitting() bool {
@@ -336,7 +349,7 @@ func (irc *Connection) maintenanceLoop(lastReconnect time.Time) {
 // happens-before relation)
 func (irc *Connection) waitForStop(nextState ConnectionState) ConnectionState {
 	<-irc.end
-	irc.wg.Wait() // wait for readLoop and pingLoop to terminate fully
+	irc.wg.Wait() // wait for readLoop and writeLoop to terminate fully
 
 	irc.stateMutex.Lock()
 	defer irc.stateMutex.Unlock()
@@ -402,7 +415,7 @@ func (irc *Connection) Quit() {
 		quitMessage = irc.Version
 	}
 	// the server will respond to this by closing our connection;
-	// if it doesn't, pingLoop will eventually notice and close it
+	// if it doesn't, processTick will eventually notice and close it
 	irc.Send("QUIT", quitMessage)
 }
 
@@ -1036,14 +1049,14 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 	irc.end = make(chan empty)
 	irc.endClosed = false
 	irc.pwrite = make(chan []byte, irc.WriteQueueSize)
-	// 3 goroutines, plus the asynchronous socket close:
-	irc.wg.Add(4)
+	// 2 goroutines, plus the asynchronous socket close:
+	irc.wg.Add(3)
 	irc.capsChan = make(chan capResult, len(irc.RequestCaps))
 	irc.saslChan = make(chan saslResult, 1)
 	irc.welcomeChan = make(chan empty)
 	irc.registered = false
 	irc.lastError = nil
-	irc.pingSent = false
+	irc.pingSent = ""
 	irc.currentNick = ""
 	irc.userHost = ""
 	irc.userHostRequested = false
@@ -1062,7 +1075,6 @@ func (irc *Connection) connectInternal(newState ConnectionState) (err error) {
 
 	go irc.readLoop()
 	go irc.writeLoop()
-	go irc.pingLoop()
 
 	socketOpen = true
 

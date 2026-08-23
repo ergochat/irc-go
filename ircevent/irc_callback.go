@@ -668,7 +668,7 @@ func (irc *Connection) handleRegistration(e ircmsg.Message) {
 
 func (irc *Connection) handleUnavailableNick(e ircmsg.Message) {
 	// only try to change the nick if we're not registered yet,
-	// otherwise we'll change in response to pingLoop unsuccessfully
+	// otherwise we'll change in response to processTick unsuccessfully
 	// trying to restore the intended nick (swapping one undesired nick
 	// for another)
 	var nickToTry string
