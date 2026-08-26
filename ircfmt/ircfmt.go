@@ -211,10 +211,9 @@ var (
 	colourDigits  = regexp.MustCompile(`^[0-9]{1,2}$`)
 )
 
-// Escape takes a raw IRC string and returns it with our escapes.
-//
-// IE, it turns this: "This is a \x02cool\x02, \x034red\x0f message!"
-// into: "This is a $bcool$b, $c[red]red$r message!"
+// Escape takes a raw IRC string and returns it with ircfmt escapes.
+// For example, it turns "This is a \x02cool\x02, \x034red\x0f message!"
+// into "This is a $bcool$b, $c[red]red$r message!"
 func Escape(in string) string {
 	// replace all our usual escapes
 	in = valtoescape.Replace(in)
@@ -287,9 +286,9 @@ func isDigit(r rune) bool {
 	return '0' <= r && r <= '9' // don't use unicode.IsDigit, it includes non-ASCII numerals
 }
 
-// Strip takes a raw IRC string and removes it with all formatting codes removed
-// IE, it turns this: "This is a \x02cool\x02, \x034red\x0f message!"
-// into: "This is a cool, red message!"
+// Strip takes a raw IRC string and returns it with all formatting codes removed.
+// For example, it turns "This is a \x02cool\x02, \x034red\x0f message!"
+// into "This is a cool, red message!"
 func Strip(in string) string {
 	splitChunks := Split(in)
 	if len(splitChunks) == 0 {
@@ -333,10 +332,9 @@ func resolveToColourCodes(namedColors string) (foreground, background string) {
 	return resolveToColourCode(foregroundStr), resolveToColourCode(backgroundStr)
 }
 
-// Unescape takes our escaped string and returns a raw IRC string.
-//
-// IE, it turns this: "This is a $bcool$b, $c[red]red$r message!"
-// into this: "This is a \x02cool\x02, \x034red\x0f message!"
+// Unescape takes an ircfmt-escaped string and returns a raw IRC string.
+// For example, it turns "This is a $bcool$b, $c[red]red$r message!"
+// into "This is a \x02cool\x02, \x034red\x0f message!"
 func Unescape(in string) string {
 	var out strings.Builder
 
